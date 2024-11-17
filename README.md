@@ -20,12 +20,31 @@ Visualize GitLab CI pipeline as a Mermaid diagram, showing either the execution 
 - Customizable Mermaid configuration
 - Available as both CLI tool and web interface
 
+## Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/twidi/gitlab-pipeline-visualizer.git
+cd gitlab-pipeline-visualizer
+```
+
+2. Create and activate a virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
 ## Usage
 
 ### Command Line Interface
 
 ```bash
-gitlab-pipeline-visualizer.py https://gitlab.com/group/project/-/pipelines/123
+python gitlab-pipeline-visualizer.py https://gitlab.com/group/project/-/pipelines/123
 ```
 
 To switch between visualization mode, use `--mode` (`timeline` (the default if not given) or `deps`)
