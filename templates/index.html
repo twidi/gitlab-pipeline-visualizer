@@ -1,0 +1,368 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GitLab Pipeline Visualizer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            margin: 0 auto;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        
+        header {
+            text-align: center;
+        }
+        
+        form {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        input[type="text"], input[type="password"], select, textarea {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border-radius: 8px; ;
+            border: 3px solid #eee;
+        }
+
+        .help-text {
+            font-size: 0.9em;
+            color: #666;
+            margin: 4px 0 10px;
+        }
+        button[type=submit] + .help-text {
+            margin: 0;
+        }
+        
+         button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background-color 0.2s;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button.copied {
+            background-color: #2196F3;
+        }
+        
+        #error {
+            color: red;
+            margin-top: 10px;
+            max-width: 800px;
+            margin: 10px auto;
+        }
+        #error:empty {
+            margin: 0;
+        }
+        
+        #result {
+            margin: 20px auto;
+            max-width: 1920px;
+            width: 100%;
+            overflow-x: auto;
+            display: flex;
+            justify-content: center;
+            position: relative;
+        }
+        
+
+        .diagram-actions {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+            gap: 10px;
+        }
+
+        #result:hover .diagram-actions {
+            display: flex;
+        }
+
+        .mermaid {
+            background: white;
+            padding: 10px;
+            width: 100%;
+            display: flex;
+            justify-content: stretch;
+        }
+        .mermaid > svg {
+            max-width: unset !important;
+        }
+
+        .url-result {
+            text-align: center;
+            padding: 20px;
+        }
+
+        details {
+            margin-top: 15px;
+        }
+
+        summary {
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 8px;
+            font-size: smaller;
+        }
+
+        summary:hover {
+            background-color: #ebebeb;
+        }
+
+        details .form-group {
+            margin: 0;
+        }
+
+        #mermaid_config {
+            height: 150px;
+            font-family: monospace;
+            resize: vertical;
+        }
+
+        #conversionCanvas {
+            display: none;
+        }
+
+    </style>
+</head>
+<body>
+    <header>
+        <h1>GitLab Pipeline Visualizer</h1>
+        <p>
+            Created by <a href="https://claude.ai" target="_blank">Claude sonnet 3.5</a> with the help of <a href="https://github.com/twidi" target="_blank">Twidi</a>
+            |
+            Source code available on <a href="https://github.com/twidi/gitlab-pipeline-visualizer/" target="_blank">GitHub</a>
+        </p>
+    </header>
+    
+    <form id="visualizerForm">
+        <div class="form-group">
+            <label for="url">GitLab Pipeline URL:</label>
+            <input type="text" id="url" name="url" required 
+                   placeholder="https://gitlab.com/group/project/-/pipelines/123">
+        </div>
+        
+        <div class="form-group">
+            <label for="token">GitLab Token:</label>
+            <input type="password" id="token" name="token" required>
+            <div class="help-text">
+                A GitLab personal access token with at least <code>read_api</code> scope is required. 
+                The token must have access to the GitLab repository containing the pipeline.
+                You can create one in your GitLab settings under Access Tokens.
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="mode">Visualization Mode:</label>
+            <select id="mode" name="mode">
+                <option value="timeline">Timeline</option>
+                <option value="deps">Dependencies</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="output">Output Format:</label>
+            <select id="output" name="output">
+                <option value="mermaid">Mermaid (rendered)</option>
+                <option value="mermaid.live">Mermaid.live URL</option>
+                <option value="kroki.io">Kroki.io URL</option>
+            </select>
+        </div>
+        
+        <div style="display: flex; gap: 1em; align-items: center;">
+            <button type="submit">Generate Diagram</button>
+            <div class="help-text">
+                Note: We use the form data to generate the diagrams and forget about them immediatly.
+            </div>
+        </div>
+
+        <details>
+            <summary>Mermaid Configuration</summary>
+            <div class="form-group">
+                <textarea id="mermaid_config" name="mermaid_config">{{ default_config }}</textarea>
+                <div class="help-text">
+                    Note: Configuration options are passed directly to the output format without validation. 
+                    Not all Mermaid configurations work with all output formats (e.g., ELK layout only work on mermaid.live, but we remove for other output formats has it's a know case).
+                </div>
+            </div>
+        </details>
+
+    </form>
+
+    <div id="error"></div>
+    <div id="result"></div>
+
+    <canvas id="conversionCanvas"></canvas>
+        
+    <script>
+        // Initialize mermaid
+        mermaid.initialize({ startOnLoad: false });
+
+        function svgToPng(svgElement) {
+            return new Promise((resolve, reject) => {
+                const svg = svgElement;
+                const svgData = new XMLSerializer().serializeToString(svg);
+                
+                const viewBox = svg.viewBox.baseVal;
+                
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.getElementById('conversionCanvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    canvas.width = viewBox.width;
+                    canvas.height = viewBox.height;
+                    
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    ctx.drawImage(img, 0, 0, viewBox.width, viewBox.height);
+                    
+                    try {
+                        const pngData = canvas.toDataURL('image/png');
+                        resolve(pngData);
+                    } catch (err) {
+                        reject(err);
+                    }
+                };
+                img.onerror = reject;
+                
+                const blob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+                img.src = URL.createObjectURL(blob);
+            });
+        }
+
+        function downloadPNG(dataUrl, filename) {
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = filename || 'pipeline-diagram.png';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        async function copyPNGToClipboard(pngData) {
+            try {
+                // Convert base64 to blob
+                const response = await fetch(pngData);
+                const blob = await response.blob();
+                
+                // Create ClipboardItem
+                const item = new ClipboardItem({ "image/png": blob });
+                await navigator.clipboard.write([item]);
+                
+                return true;
+            } catch (err) {
+                console.error('Failed to copy PNG:', err);
+                return false;
+            }
+        }
+
+        document.getElementById('visualizerForm').onsubmit = async (e) => {
+            e.preventDefault();
+            
+            const form = e.target;
+            const errorDiv = document.getElementById('error');
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                const response = await fetch('/visualize', {
+                    method: 'POST',
+                    body: new FormData(form)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    errorDiv.textContent = '';
+                    
+                    if (data.type === 'mermaid') {
+                        resultDiv.innerHTML = `
+                            <div class="mermaid">${data.content}</div>
+                            <div class="diagram-actions">
+                                <button class="download-png">Download PNG</button>
+                                <button class="copy-png">Copy PNG</button>
+                            </div>
+                        `;
+                        await mermaid.init(undefined, document.querySelectorAll('.mermaid'));
+
+                        let cachedPngData = null;
+                        async function getPngData() {
+                            if (!cachedPngData) {
+                                const svg = resultDiv.querySelector('svg');
+                                cachedPngData = await svgToPng(svg);
+                            }
+                            return cachedPngData;
+                        }
+
+                        resultDiv.querySelector('.download-png').onclick = async () => {
+                            try {
+                                const pngData = await getPngData();
+                                downloadPNG(pngData);
+                            } catch (err) {
+                                console.error('PNG conversion failed:', err);
+                                errorDiv.textContent = 'Failed to generate PNG';
+                            }
+                        };
+
+                        resultDiv.querySelector('.copy-png').onclick = async (e) => {
+                            try {
+                                const pngData = await getPngData();
+                                const success = await copyPNGToClipboard(pngData);
+                                if (success) {
+                                    e.target.textContent = 'Copied!';
+                                    e.target.classList.add('copied');
+                                    setTimeout(() => {
+                                        e.target.textContent = 'Copy PNG';
+                                        e.target.classList.remove('copied');
+                                    }, 2000);
+                                } else {
+                                    throw new Error('Copy failed');
+                                }
+                            } catch (err) {
+                                console.error('PNG copy failed:', err);
+                                errorDiv.textContent = 'Failed to copy PNG';
+                            }
+                        };
+                    } else if (data.type === 'url') {
+                        const output = document.getElementById("output").value;
+                        resultDiv.innerHTML = `<p class="url-result"><a href="${data.content}" target="_blank">View on ${output}</a></p>`;
+                    }
+                } else {
+                    errorDiv.textContent = data.error || 'An error occurred';
+                    resultDiv.innerHTML = '';
+                }
+            } catch (error) {
+                errorDiv.textContent = 'An error occurred while processing your request';
+                resultDiv.innerHTML = '';
+            }
+        };
+    </script>
+</body>
+</html>
