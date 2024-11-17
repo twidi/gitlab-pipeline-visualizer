@@ -6,13 +6,17 @@ import configparser
 import json
 import logging
 import os
+import re
 import sys
+import traceback
 import webbrowser
 import zlib
 from collections import defaultdict
 from copy import deepcopy
 from datetime import datetime
+from operator import itemgetter
 from pathlib import Path
+from pprint import pprint
 from textwrap import dedent, indent
 from urllib.parse import urlparse
 
@@ -65,6 +69,11 @@ class GitLabPipelineVisualizer:
         query GetPipelineJobs($projectPath: ID!, $pipelineId: CiPipelineID!) {
           project(fullPath: $projectPath) {
             pipeline(id: $pipelineId) {
+              stages {
+                nodes {
+                  name
+                }
+              }
               jobs {
                 nodes {
                   name
@@ -105,118 +114,161 @@ class GitLabPipelineVisualizer:
         data = response.json()
         self.logger.debug(f"\nResponse: {json.dumps(data, indent=2)}")
 
-        return data["data"]["project"]["pipeline"]["jobs"]["nodes"]
+        return data["data"]["project"]["pipeline"]
 
-    def remove_transitive_dependencies(self, dependencies):
-        """Remove transitive dependencies from the graph."""
-        # Get the full transitive closure
-        closure = self.compute_transitive_closure(dependencies)
-
-        # Create a new graph with only direct dependencies
-        direct_deps = deepcopy(dependencies)
-
-        for job, deps in dependencies.items():
-            for dep in deps[:]:
-                for other_dep in deps:
-                    if other_dep != dep and dep in closure.get(other_dep, []):
-                        if dep in direct_deps[job]:
-                            direct_deps[job].remove(dep)
-
-        return direct_deps
-
-    def compute_transitive_closure(self, dependencies):
-        """Compute the transitive closure of the dependency graph."""
-        closure = deepcopy(dependencies)
-        jobs = list(
-            set(
-                [job for job in dependencies.keys()]
-                + [dep for deps in dependencies.values() for dep in deps]
-            )
-        )
-
-        for k in jobs:
-            for i in jobs:
-                if i in closure and k in closure[i]:
-                    for j in jobs:
-                        if k in closure and j in closure[k]:
-                            if i not in closure:
-                                closure[i] = []
-                            if j not in closure[i]:
-                                closure[i].append(j)
-        return closure
-
-    def deduplicate_jobs(self, jobs_data):
+    def deduplicate_jobs(self, jobs):
         """Deduplicate jobs by name, keeping only the last run based on queuedAt time."""
         job_runs = defaultdict(list)
 
-        # Group jobs by name
-        for job in jobs_data:
-            if job["queuedAt"]:
-                queued_at = datetime.fromisoformat(
-                    job["queuedAt"].replace("Z", "+00:00")
-                )
-                job_runs[job["name"]].append((queued_at, job))
+        # Group jobs by identifier
+        for job in jobs:
+            job_runs[job["identifier"]].append((job["queuedAt"], job))
 
         # Keep only the last run of each job
         deduplicated_jobs = []
         for job_name, runs in job_runs.items():
             # Sort runs by queuedAt time and keep the latest
-            sorted_runs = sorted(runs, key=lambda x: x[0])
+            sorted_runs = sorted(runs, key=itemgetter(0))
             if sorted_runs:
                 deduplicated_jobs.append(sorted_runs[-1][1])
 
         return deduplicated_jobs
 
+    def get_ordered_stages(self, pipeline_data):
+        """Get ordered list of stages, including .pre and .post."""
+        # Get stages from pipeline data
+        stages = [stage["name"] for stage in pipeline_data["stages"]["nodes"]]
+
+        # Check for .pre and .post in jobs
+        job_stages = set(job["stage"]["name"] for job in pipeline_data["jobs"]["nodes"])
+
+        # Add .pre at the beginning if it exists in jobs
+        if ".pre" in job_stages:
+            stages.insert(0, ".pre")
+
+        # Add .post at the end if it exists in jobs
+        if ".post" in job_stages:
+            stages.append(".post")
+
+        return stages
+
+    def build_dependency_graph(self, jobs, ordered_stages):
+        """Build a complete dependency graph combining explicit needs and stage-based dependencies.
+
+        Args:
+            jobs (dict): Dictionary of job data, keyed by job identifier
+            ordered_stages (list): List of stages in order
+
+        Returns:
+            dict: Graph of job dependencies where each key is a job identifier and each value
+                  is a list of job identifiers it depends on
+        """
+        dependencies = {}
+
+        # Create mapping of stages to jobs
+        stage_jobs = defaultdict(list)
+        for job_id, job in jobs.items():
+            stage_jobs[job["stage"]].append(job_id)
+
+        for job_id, job in jobs.items():
+            # Start with explicit needs
+            job_deps = set(job["needs"])
+
+            # If no explicit needs and not in first stage, depend on all jobs from previous stage
+            if not job_deps and job["stage"] in ordered_stages:
+                stage_idx = ordered_stages.index(job["stage"])
+                if stage_idx > 0:
+                    # Look for the nearest previous stage that has jobs
+                    for prev_stage in reversed(ordered_stages[:stage_idx]):
+                        if prev_stage in stage_jobs:
+                            job_deps.update(stage_jobs[prev_stage])
+                            break
+
+            dependencies[job_id] = list(job_deps)
+
+        return dependencies
+
+    def remove_transitive_dependencies(self, jobs):
+        """Remove transitive dependencies from job dependencies.
+
+        If job C depends on jobs A and B, and B also depends on A,
+        then we can remove A from C's dependencies since it's redundant.
+
+        Args:
+            jobs (dict): Dictionary of job data including dependencies
+
+        Returns:
+            dict: Updated jobs dictionary with transitive dependencies removed
+        """
+        # Create a deep copy to avoid modifying the original
+        updated_jobs = deepcopy(jobs)
+
+        # For each job
+        for job in updated_jobs.values():
+            direct_deps = set(job["needs"])
+            indirect_deps = set()
+
+            # Find all indirect dependencies
+            for dep in direct_deps:
+                if dep in updated_jobs:
+                    indirect_deps.update(updated_jobs[dep]["needs"])
+
+            # Remove indirect dependencies from direct dependencies
+            job["needs"] = list(direct_deps - indirect_deps)
+
+        return updated_jobs
+
+    def name_to_identifier(self, name):
+        return re.sub(r"\W+|^(?=\d)", "_", name)
+
+    def str_to_datetime(self, str_datetime):
+        return (
+            datetime.fromisoformat(str_datetime.replace("Z", "+00:00"))
+            if str_datetime
+            else None
+        )
+
+    def normalize_jobs(self, jobs_data):
+        """Simplify jobs data and order them by `queuedAt`, removing alls that are not in success/failed status"""
+        return sorted(
+            [
+                job
+                | {
+                    "queuedAt": self.str_to_datetime(job["queuedAt"]),
+                    "startedAt": self.str_to_datetime(job["startedAt"]),
+                    "finishedAt": self.str_to_datetime(job["finishedAt"]),
+                    "identifier": self.name_to_identifier(job["name"]),
+                    "stage": job["stage"]["name"],
+                    "needs": (
+                        [
+                            self.name_to_identifier(node["name"])
+                            for node in job["needs"]["nodes"]
+                        ]
+                        if job.get("needs", {}).get("nodes", [])
+                        else []
+                    ),
+                }
+                for job in jobs_data
+                if job["status"] in ("SUCCESS", "FAILED") and job.get("queuedAt")
+            ],
+            key=itemgetter("queuedAt"),
+        )
+
     def process_pipeline_data(self):
         """Process pipeline data and extract dependencies and job information."""
-        jobs_data = self.fetch_pipeline_data()
+        pipeline_data = self.fetch_pipeline_data()
+        jobs_data = pipeline_data["jobs"]["nodes"]
 
-        # Deduplicate jobs before processing
-        jobs_data = self.deduplicate_jobs(jobs_data)
+        # Get ordered stages
+        ordered_stages = self.get_ordered_stages(pipeline_data)
 
-        raw_dependencies = defaultdict(list)
-        job_statuses = {}
-        job_details = {}
-        stages = defaultdict(list)
-        jobs_with_deps = set()
-
-        # Filter out jobs that didn't run
-        running_jobs = [
-            job
-            for job in jobs_data
-            if job["status"] not in ["CREATED", "SKIPPED", "MANUAL"]
-        ]
-
-        for job in running_jobs:
-            job_name = job["name"]
-            job_statuses[job_name] = job["status"].lower()
-
-            # Store job timing details
-            details = {"stage": job["stage"]["name"]}
-            if job["duration"] is not None:
-                details["duration"] = job["duration"]
-            if job["startedAt"]:
-                details["started_at"] = job["startedAt"]
-            if job["finishedAt"]:
-                details["finished_at"] = job["finishedAt"]
-            job_details[job_name] = details
-
-            # Process needs (dependencies)
-            if job["needs"]["nodes"]:
-                for need in job["needs"]["nodes"]:
-                    need_name = need["name"]
-                    raw_dependencies[job_name].append(need_name)
-                    jobs_with_deps.add(job_name)
-                    jobs_with_deps.add(need_name)
-
-            # Only add to stages if it has no dependencies
-            if job_name not in jobs_with_deps:
-                stages[job["stage"]["name"]].append(job_name)
-
-        # Remove transitive dependencies
-        dependencies = self.remove_transitive_dependencies(raw_dependencies)
-
-        return dependencies, job_statuses, job_details, stages, jobs_with_deps
+        # Normalize the jobs
+        jobs = self.normalize_jobs(jobs_data)
+        jobs = self.deduplicate_jobs(jobs)
+        jobs_dict = {job["identifier"]: job for job in jobs}
+        jobs = self.remove_transitive_dependencies(jobs_dict)
+        dependencies = self.build_dependency_graph(jobs_dict, ordered_stages)
+        return ordered_stages, jobs, dependencies
 
     def wrap_mermaid_config(self, config_str):
         """Wrap the config in the required Mermaid format."""
@@ -235,171 +287,137 @@ class GitLabPipelineVisualizer:
 
     def generate_mermaid_deps(self):
         """Generate a Mermaid state diagram representation of the pipeline dependencies."""
-        dependencies, job_statuses, job_details, stages, jobs_with_deps = (
-            self.process_pipeline_data()
-        )
+        stages, jobs, dependencies = self.process_pipeline_data()
+
+        failed_jobs = [
+            job_id for job_id, job in jobs.items() if job["status"] == "FAILED"
+        ]
 
         mermaid = [
             "stateDiagram-v2",
             "",
-            "    %% Style definitions",
-            "    classDef failed fill:#f2dede,stroke:#a94442,color:#a94442",
-            "",
-            f'    state "Dependencies of Pipeline {self.pipeline_id}" as pipeline {{',
-            "",
         ]
 
-        # Keep track of failed jobs
-        failed_jobs = []
+        # Add style definitions for failed jobs if any exist
+        if failed_jobs:
+            mermaid.extend(
+                [
+                    "    %% Style definitions",
+                    "    classDef failed fill:#f2dede,stroke:#a94442,color:#a94442",
+                    "",
+                ]
+            )
 
-        # First add entry points - jobs with no dependencies that others depend on
-        root_jobs = set()
-        for job in dependencies:
-            for dep in dependencies[job]:
-                if dep not in dependencies and dep in job_statuses:
-                    root_jobs.add(dep)
+        # Start pipeline container
+        mermaid.extend(
+            [
+                f'    state "Dependencies of Pipeline {self.pipeline_id}" as pipeline {{',
+                "",
+                "    %% States with duration",
+            ]
+        )
 
-        # Add transitions from [*] to root jobs
-        for job in sorted(root_jobs):
-            if "duration" in job_details[job]:
-                duration = self.format_duration(job_details[job]["duration"])
-                mermaid.append(f"    [*] --> {job}")
-                mermaid.append(f'    state "{job}<br>{duration}" as {job}')
-                if job_statuses[job] == "failed":
-                    failed_jobs.append(job)
+        # Add job states with duration
+        for job_id, job in jobs.items():
+            mermaid.append(
+                f'    state "{job["name"]}<br>{self.format_duration(job["duration"])}" as {job_id}'
+            )
+
+        mermaid.append("")
+        mermaid.append("    %% Dependencies")
 
         # Add dependencies
-        for job, deps in sorted(dependencies.items()):
-            if job in job_statuses:
-                # Add job state definition with duration
-                if "duration" in job_details[job]:
-                    duration = self.format_duration(job_details[job]["duration"])
-                    mermaid.append(f'    state "{job}<br>{duration}" as {job}')
-                    if job_statuses[job] == "failed":
-                        failed_jobs.append(job)
-
-                # Add dependencies
-                for dep in sorted(deps):
-                    if dep in job_statuses:
-                        mermaid.append(f"    {dep} --> {job}")
-
-        # Add independent jobs at the end, sorted by start time
-        independent_jobs = []
-        for job_name, details in job_details.items():
-            if (
-                job_name not in dependencies
-                and job_name not in root_jobs
-                and not any(job_name in deps for deps in dependencies.values())
-            ):
-                if "started_at" in details:
-                    start_time = datetime.fromisoformat(
-                        details["started_at"].replace("Z", "+00:00")
-                    )
-                    independent_jobs.append((start_time, job_name))
-
-        if independent_jobs:
-            mermaid.append("")
-            mermaid.append("    %% Independent jobs")
-            for _, job_name in sorted(independent_jobs):
-                if "duration" in job_details[job_name]:
-                    duration = self.format_duration(job_details[job_name]["duration"])
-                    mermaid.append(
-                        f'    state "{job_name}<br>{duration}" as {job_name}'
-                    )
-                    if job_statuses[job_name] == "failed":
-                        failed_jobs.append(job_name)
+        for job_id, job in jobs.items():
+            if not dependencies.get(job_id, []):
+                # Jobs with no dependencies start from [*]
+                mermaid.append(f"    [*] --> {job_id}")
+            else:
+                # Add each dependency relationship
+                for dep in dependencies[job_id]:
+                    mermaid.append(f"    {dep} --> {job_id}")
 
         # Close the pipeline state
         mermaid.append("    }")
 
         # Add class declarations for failed jobs after the state definition
-        for job in failed_jobs:
-            mermaid.append(f"class {job} failed")
+        for job_id in failed_jobs:
+            mermaid.append(f"class {job_id} failed")
 
         return "\n".join(mermaid)
 
-    def calculate_job_order(self, dependencies, job_details):
-        """Calculate the order of jobs based on dependencies and start times."""
+    def calculate_job_order(self, jobs, dependencies):
+        """Calculate execution order of jobs based on dependencies and start times.
+
+        Args:
+            jobs (dict): Dictionary of jobs with their details including startedAt times
+            dependencies (dict): Dictionary mapping job IDs to lists of dependency job IDs
+
+        Returns:
+            list: Job identifiers in execution order
+        """
         # Start with jobs that have no dependencies
         independent_jobs = [
-            name
-            for name in job_details
-            if name not in dependencies or not dependencies[name]
+            job_id
+            for job_id in jobs
+            if job_id not in dependencies or not dependencies[job_id]
         ]
 
         # Sort independent jobs by start time
         independent_jobs.sort(
-            key=lambda job: (
-                datetime.fromisoformat(
-                    job_details[job]["started_at"].replace("Z", "+00:00")
-                )
-                if "started_at" in job_details[job]
-                else datetime.max
-            )
+            key=lambda job_id: (jobs[job_id]["startedAt"] or datetime.max)
         )
 
         ordered_jobs = []
         processed_jobs = set()
 
-        def add_job_and_dependents(job):
-            if job in processed_jobs:
+        def process_job_and_dependents(job_id):
+            if job_id in processed_jobs:
                 return
-            processed_jobs.add(job)
-            ordered_jobs.append(job)
 
-            # Find all jobs that depend on this job
+            processed_jobs.add(job_id)
+            ordered_jobs.append(job_id)
+
+            # Find jobs that depend on this one
             dependents = []
-            for dependent, deps in dependencies.items():
-                if job in deps and dependent not in processed_jobs:
-                    dependents.append(dependent)
+            for dependent_id, deps in dependencies.items():
+                if job_id in deps and dependent_id not in processed_jobs:
+                    dependents.append(dependent_id)
 
-            # Sort dependents by how many of their dependencies are already processed
-            def dependency_readiness(dep_job):
-                deps = dependencies.get(dep_job, [])
+            # Sort dependents by readiness (how many of their dependencies are processed)
+            # and start time
+            def dependency_readiness(dependent_id):
+                deps = dependencies.get(dependent_id, [])
                 deps_ready = sum(1 for d in deps if d in processed_jobs)
-                all_deps = len(deps)
-                # If all dependencies are ready, use start time as tiebreaker
-                if deps_ready == all_deps:
-                    start_time = (
-                        datetime.fromisoformat(
-                            job_details[dep_job]["started_at"].replace("Z", "+00:00")
-                        )
-                        if "started_at" in job_details[dep_job]
-                        else datetime.max
-                    )
-                    return (deps_ready / all_deps if all_deps else 1, start_time)
-                return (deps_ready / all_deps if all_deps else 1, datetime.max)
+                start_time = jobs[dependent_id]["startedAt"] or datetime.max
+                return (deps_ready / len(deps) if deps else 1, start_time)
 
             dependents.sort(key=dependency_readiness, reverse=True)
 
-            # Process dependents that have all their dependencies met
-            for dependent in dependents:
-                if all(dep in processed_jobs for dep in dependencies[dependent]):
-                    add_job_and_dependents(dependent)
+            # Process dependents that have all dependencies met
+            for dependent_id in dependents:
+                if all(dep in processed_jobs for dep in dependencies[dependent_id]):
+                    process_job_and_dependents(dependent_id)
 
         # Process all independent jobs and their dependents
-        for job in independent_jobs:
-            add_job_and_dependents(job)
+        for job_id in independent_jobs:
+            process_job_and_dependents(job_id)
 
         return ordered_jobs
 
     def generate_mermaid_timeline(self):
-        """Generate a Mermaid Gantt chart representation of the pipeline timeline."""
-        dependencies, job_statuses, job_details, stages, jobs_with_deps = (
-            self.process_pipeline_data()
-        )
+        """Generate a Mermaid Gantt chart showing pipeline execution timeline."""
+        stages, jobs, dependencies = self.process_pipeline_data()
 
-        # Find pipeline start time
+        # Find earliest start time
         start_times = [
-            datetime.fromisoformat(details["started_at"].replace("Z", "+00:00"))
-            for details in job_details.values()
-            if "started_at" in details
+            job["startedAt"] for job in jobs.values() if job["startedAt"] is not None
         ]
         if not start_times:
             raise ValueError("No jobs with timing information found")
 
         pipeline_start = min(start_times)
 
+        # Basic Gantt chart setup
         mermaid = [
             "gantt",
             f"    title Timeline of Pipeline {self.pipeline_id}",
@@ -409,45 +427,32 @@ class GitLabPipelineVisualizer:
             "    section Jobs",
         ]
 
-        def format_job_status(status):
-            """Return the Mermaid status tag for a job based on its status"""
-            if status == "success":
-                return "active"
-            elif status == "failed":
-                return "crit"
+        # Get jobs in execution order
+        ordered_jobs = self.calculate_job_order(jobs, dependencies)
+
+        # Helper to format job status for Mermaid
+        def format_job_status(job):
+            if "status" in job:
+                return "crit" if job["status"] == "FAILED" else "active"
             return ""
 
-        # Get ordered jobs
-        ordered_jobs = self.calculate_job_order(dependencies, job_details)
+        # Add each job to the timeline
+        for job_id in ordered_jobs:
+            job = jobs[job_id]
 
-        # Add jobs in the calculated order
-        for job_name in ordered_jobs:
-            details = job_details[job_name]
+            if job["startedAt"] and job["finishedAt"]:
+                # Calculate relative start time from pipeline start
+                relative_start = (job["startedAt"] - pipeline_start).total_seconds()
+                duration = (job["finishedAt"] - job["startedAt"]).total_seconds()
 
-            if job_name not in dependencies or not dependencies[job_name]:
-                # Independent job - use relative start time
-                if "started_at" in details and "duration" in details:
-                    job_start = datetime.fromisoformat(
-                        details["started_at"].replace("Z", "+00:00")
-                    )
-                    relative_start = (job_start - pipeline_start).total_seconds()
-                    start_time = f"{int(relative_start // 3600):02d}:{int((relative_start % 3600) // 60):02d}:{int(relative_start % 60):02d}"
-                    formatted_duration = self.format_duration(details["duration"])
-                    status_tag = format_job_status(job_statuses[job_name])
-                    status_part = f"{status_tag}, " if status_tag else ""
-                    mermaid.append(
-                        f"    {job_name} {formatted_duration:<10} :{status_part}{job_name}, {start_time}, {details['duration']}s"
-                    )
-            else:
-                # Dependent job - use after syntax
-                if "duration" in details:
-                    deps_str = " and ".join(dependencies[job_name])
-                    formatted_duration = self.format_duration(details["duration"])
-                    status_tag = format_job_status(job_statuses[job_name])
-                    status_part = f"{status_tag}, " if status_tag else ""
-                    mermaid.append(
-                        f"    {job_name} {formatted_duration:<10} :{status_part}{job_name}, after {deps_str}, {details['duration']}s"
-                    )
+                start_time = f"{int(relative_start // 3600):02d}:{int((relative_start % 3600) // 60):02d}:{int(relative_start % 60):02d}"
+                formatted_duration = self.format_duration(duration)
+
+                status = format_job_status(job)
+                status_part = f"{status}, " if status else ""
+                mermaid.append(
+                    f"    {job_id} {formatted_duration:<10} :{status_part}{job_id}, {start_time}, {duration}s"
+                )
 
         return "\n".join(mermaid)
 
@@ -777,7 +782,9 @@ Onlive version: https://gitlabviz.pythonanywhere.com/
         print(f"Error accessing GitLab API: {e}", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
-        print(f"Error generating diagram: {e}", file=sys.stderr)
+        print(
+            f"Error generating diagram:: {e}, {traceback.format_exc()}", file=sys.stderr
+        )
         sys.exit(1)
 
 
