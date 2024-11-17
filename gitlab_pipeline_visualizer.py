@@ -80,6 +80,7 @@ class GitLabPipelineVisualizer:
                   startedAt
                   finishedAt
                   duration
+                  queuedAt
                 }
               }
             }
@@ -144,9 +145,35 @@ class GitLabPipelineVisualizer:
                                 closure[i].append(j)
         return closure
 
+    def deduplicate_jobs(self, jobs_data):
+        """Deduplicate jobs by name, keeping only the last run based on queuedAt time."""
+        job_runs = defaultdict(list)
+
+        # Group jobs by name
+        for job in jobs_data:
+            if job["queuedAt"]:
+                queued_at = datetime.fromisoformat(
+                    job["queuedAt"].replace("Z", "+00:00")
+                )
+                job_runs[job["name"]].append((queued_at, job))
+
+        # Keep only the last run of each job
+        deduplicated_jobs = []
+        for job_name, runs in job_runs.items():
+            # Sort runs by queuedAt time and keep the latest
+            sorted_runs = sorted(runs, key=lambda x: x[0])
+            if sorted_runs:
+                deduplicated_jobs.append(sorted_runs[-1][1])
+
+        return deduplicated_jobs
+
     def process_pipeline_data(self):
         """Process pipeline data and extract dependencies and job information."""
         jobs_data = self.fetch_pipeline_data()
+
+        # Deduplicate jobs before processing
+        jobs_data = self.deduplicate_jobs(jobs_data)
+
         raw_dependencies = defaultdict(list)
         job_statuses = {}
         job_details = {}
