@@ -306,9 +306,9 @@ class GitLabPipelineVisualizer:
         jobs = self.normalize_jobs(jobs_data)
         jobs = self.deduplicate_jobs(jobs)
         jobs_dict = {job["identifier"]: job for job in jobs}
-        jobs = self.remove_transitive_dependencies(jobs_dict)
+        jobs_dict = self.remove_transitive_dependencies(jobs_dict)
         dependencies = self.build_dependency_graph(jobs_dict, ordered_stages)
-        return ordered_stages, jobs, dependencies
+        return ordered_stages, jobs_dict, dependencies
 
     def wrap_mermaid_config(self, config_str):
         """Wrap the config in the required Mermaid format."""
