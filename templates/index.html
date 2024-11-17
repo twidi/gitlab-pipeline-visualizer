@@ -3,7 +3,6 @@
 <html>
 <head>
     <title>GitLab Pipeline Visualizer</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -94,7 +93,7 @@
         .diagram-actions {
             position: absolute;
             top: 20px;
-            left: 20px;
+            left: 10px;
             display: none;
             gap: 10px;
         }
@@ -207,7 +206,7 @@
                 <textarea id="mermaid_config" name="mermaid_config">{{ default_config }}</textarea>
                 <div class="help-text">
                     Note: Configuration options are passed directly to the output format without validation. 
-                    Not all Mermaid configurations work with all output formats (e.g., ELK layout only work on mermaid.live, but we remove for other output formats has it's a know case).
+                    Not all Mermaid configurations work with all output formats (e.g., ELK layout does not work on kroki, but we skip the line it in this case has it's a know case).
                 </div>
             </div>
         </details>
@@ -219,8 +218,10 @@
 
     <canvas id="conversionCanvas"></canvas>
         
-    <script>
-        // Initialize mermaid
+    <script type="module">
+        import mermaid from 'https://unpkg.com/mermaid@11.4.0/dist/mermaid.esm.mjs';
+        import elkLayouts from 'https://unpkg.com/@mermaid-js/layout-elk@0.1.5/dist/mermaid-layout-elk.esm.min.mjs';
+        mermaid.registerLayoutLoaders(elkLayouts);        // Initialize mermaid
         mermaid.initialize({ startOnLoad: false });
 
         function svgToPng(svgElement) {
