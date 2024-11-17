@@ -117,22 +117,62 @@ class GitLabPipelineVisualizer:
         return data["data"]["project"]["pipeline"]
 
     def deduplicate_jobs(self, jobs):
-        """Deduplicate jobs by name, keeping only the last run based on queuedAt time."""
+        """Handle multiple runs of the same job, numbering them and adjusting dependencies.
+
+        For multiple runs of the same job:
+        - Add numbered suffixes to identifiers (job_1, job_2, etc.)
+        - Force each run after the first to depend on the previous run
+        - For jobs depending on a duplicated job, select the last run that ended before
+          the dependent job starts
+
+        Args:
+            jobs (list): List of job dictionaries
+
+        Returns:
+            list: Updated list of jobs with adjusted identifiers and dependencies
+        """
         job_runs = defaultdict(list)
+        processed_jobs = []
 
-        # Group jobs by identifier
+        # First pass: group jobs by base identifier and add numbered suffixes
         for job in jobs:
-            job_runs[job["identifier"]].append((job["queuedAt"], job))
+            base_identifier = job["identifier"]
+            runs = job_runs[base_identifier]
+            run_number = len(runs) + 1
 
-        # Keep only the last run of each job
-        deduplicated_jobs = []
-        for job_name, runs in job_runs.items():
-            # Sort runs by queuedAt time and keep the latest
-            sorted_runs = sorted(runs, key=itemgetter(0))
-            if sorted_runs:
-                deduplicated_jobs.append(sorted_runs[-1][1])
+            # Create a new job with numbered identifier
+            new_job = job.copy()
+            new_job["base_identifier"] = base_identifier
+            new_job["identifier"] = f"{base_identifier}_{run_number}"
 
-        return deduplicated_jobs
+            # Force dependency on previous run (except for first run)
+            if run_number > 1:
+                new_job["needs"] = [f"{base_identifier}_{run_number-1}"]
+
+            runs.append(new_job)
+            processed_jobs.append(new_job)
+
+        # Second pass: update dependencies for jobs that depend on duplicated jobs
+        for job in processed_jobs:
+            updated_needs = []
+            job_start = job["startedAt"]
+
+            for need in job["needs"]:
+                if need in job_runs:  # This is a duplicated job
+                    # Get all runs that ended before this job started (or all, in case we don't have some)
+                    eligible_runs = [
+                        run
+                        for run in job_runs[need]
+                        if run["finishedAt"] and run["finishedAt"] < job_start
+                    ] or job_runs
+                    updated_needs.append(eligible_runs[-1]["identifier"])
+                else:
+                    # Non-duplicated job - keep as is
+                    updated_needs.append(need)
+
+            job["needs"] = updated_needs
+
+        return processed_jobs
 
     def get_ordered_stages(self, pipeline_data):
         """Get ordered list of stages, including .pre and .post."""
@@ -443,15 +483,14 @@ class GitLabPipelineVisualizer:
             if job["startedAt"] and job["finishedAt"]:
                 # Calculate relative start time from pipeline start
                 relative_start = (job["startedAt"] - pipeline_start).total_seconds()
-                duration = (job["finishedAt"] - job["startedAt"]).total_seconds()
 
                 start_time = f"{int(relative_start // 3600):02d}:{int((relative_start % 3600) // 60):02d}:{int(relative_start % 60):02d}"
-                formatted_duration = self.format_duration(duration)
+                formatted_duration = self.format_duration(job["duration"])
 
                 status = format_job_status(job)
                 status_part = f"{status}, " if status else ""
                 mermaid.append(
-                    f"    {job_id} {formatted_duration:<10} :{status_part}{job_id}, {start_time}, {duration}s"
+                    f"    {job['name']} {formatted_duration:<10} :{status_part}{job_id}, {start_time}, {job['duration']}s"
                 )
 
         return "\n".join(mermaid)
