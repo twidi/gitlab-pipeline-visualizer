@@ -463,6 +463,7 @@ class GitLabPipelineVisualizer:
             f"    title Timeline of Pipeline {self.pipeline_id}",
             "    dateFormat  HH:mm:ss",
             "    axisFormat  %H:%M:%S",
+            "    todayMarker off",
             "",
             "    section Jobs",
         ]
