@@ -3,6 +3,7 @@ from flask import Flask, jsonify, render_template, request
 
 from gitlab_pipeline_visualizer import (DEFAULT_MERMAID_CONFIG,
                                         GitLabPipelineVisualizer,
+                                        fetch_pipeline_data,
                                         generate_kroki_io_url,
                                         generate_mermaid_live_url,
                                         parse_gitlab_url,
@@ -32,12 +33,14 @@ def visualize():
         # Parse the GitLab URL
         base_url, project_path, pipeline_id = parse_gitlab_url(gitlab_url)
 
+        # Fetch pipeline data
+        pipeline_data = fetch_pipeline_data(
+            base_url, gitlab_token, project_path, pipeline_id
+        )
+
         # Create visualizer instance
         visualizer = GitLabPipelineVisualizer(
-            project_path,
-            pipeline_id,
-            gitlab_token,
-            base_url,
+            pipeline_data,
             verbose=0,
             mode=mode,
             mermaid_config=mermaid_config,

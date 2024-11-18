@@ -29,24 +29,78 @@ gantt:
 """
 
 
+def fetch_pipeline_data(gitlab_url, gitlab_token, project_path, pipeline_id):
+    """Fetch pipeline data using GraphQL.
+
+    Args:
+        gitlab_url (str): Base GitLab URL
+        gitlab_token (str): GitLab API token
+        project_path (str): Full project path
+        pipeline_id (str): Pipeline ID
+
+    Returns:
+        dict: Full API response data
+    """
+    query = """
+    query GetPipelineJobs($projectPath: ID!, $pipelineId: CiPipelineID!) {
+      project(fullPath: $projectPath) {
+        pipeline(id: $pipelineId) {
+          stages {
+            nodes {
+              name
+            }
+          }
+          jobs {
+            nodes {
+              name
+              status
+              stage {
+                name
+              }
+              needs {
+                nodes {
+                  name
+                }
+              }
+              startedAt
+              finishedAt
+              duration
+              queuedAt
+            }
+          }
+        }
+      }
+    }
+    """
+
+    variables = {
+        "projectPath": project_path,
+        "pipelineId": f"gid://gitlab/Ci::Pipeline/{pipeline_id}",
+    }
+
+    headers = {
+        "Authorization": f"Bearer {gitlab_token}",
+        "Content-Type": "application/json",
+    }
+
+    url = f"{gitlab_url}/api/graphql"
+    response = requests.post(
+        url, headers=headers, json={"query": query, "variables": variables}
+    )
+    response.raise_for_status()
+
+    return response.json()
+
+
 class GitLabPipelineVisualizer:
     def __init__(
         self,
-        project_path,
-        pipeline_id,
-        gitlab_token,
-        gitlab_url="https://gitlab.com",
+        pipeline_data,
         verbose=0,
         mode="timeline",
         mermaid_config=None,
     ):
-        self.project_path = project_path
-        self.pipeline_id = pipeline_id
-        self.headers = {
-            "Authorization": f"Bearer {gitlab_token}",
-            "Content-Type": "application/json",
-        }
-        self.gitlab_url = gitlab_url
+        self.pipeline_data = pipeline_data["data"]["project"]["pipeline"]
         self.mode = mode
         self.mermaid_config = mermaid_config or DEFAULT_MERMAID_CONFIG
         self.setup_logging(verbose)
@@ -62,59 +116,6 @@ class GitLabPipelineVisualizer:
             self.logger.setLevel(logging.INFO)
         if verbose >= 2:
             self.logger.setLevel(logging.DEBUG)
-
-    def fetch_pipeline_data(self):
-        """Fetch pipeline data using GraphQL."""
-        query = """
-        query GetPipelineJobs($projectPath: ID!, $pipelineId: CiPipelineID!) {
-          project(fullPath: $projectPath) {
-            pipeline(id: $pipelineId) {
-              stages {
-                nodes {
-                  name
-                }
-              }
-              jobs {
-                nodes {
-                  name
-                  status
-                  stage {
-                    name
-                  }
-                  needs {
-                    nodes {
-                      name
-                    }
-                  }
-                  startedAt
-                  finishedAt
-                  duration
-                  queuedAt
-                }
-              }
-            }
-          }
-        }
-        """
-
-        variables = {
-            "projectPath": self.project_path,
-            "pipelineId": f"gid://gitlab/Ci::Pipeline/{self.pipeline_id}",
-        }
-
-        url = f"{self.gitlab_url}/api/graphql"
-        self.logger.info(f"\nPOST {url}")
-        self.logger.info(f"Query Variables: {json.dumps(variables, indent=2)}")
-
-        response = requests.post(
-            url, headers=self.headers, json={"query": query, "variables": variables}
-        )
-        response.raise_for_status()
-
-        data = response.json()
-        self.logger.debug(f"\nResponse: {json.dumps(data, indent=2)}")
-
-        return data["data"]["project"]["pipeline"]
 
     def deduplicate_jobs(self, jobs):
         """Handle multiple runs of the same job, numbering them and adjusting dependencies.
@@ -296,11 +297,10 @@ class GitLabPipelineVisualizer:
 
     def process_pipeline_data(self):
         """Process pipeline data and extract dependencies and job information."""
-        pipeline_data = self.fetch_pipeline_data()
-        jobs_data = pipeline_data["jobs"]["nodes"]
+        jobs_data = self.pipeline_data["jobs"]["nodes"]
 
         # Get ordered stages
-        ordered_stages = self.get_ordered_stages(pipeline_data)
+        ordered_stages = self.get_ordered_stages(self.pipeline_data)
 
         # Normalize the jobs
         jobs = self.normalize_jobs(jobs_data)
@@ -351,7 +351,7 @@ class GitLabPipelineVisualizer:
         # Start pipeline container
         mermaid.extend(
             [
-                f'    state "Dependencies of Pipeline {self.pipeline_id}" as pipeline {{',
+                f'    state "Pipeline dependencies" as pipeline {{',
                 "",
                 "    %% States with duration",
             ]
@@ -460,7 +460,7 @@ class GitLabPipelineVisualizer:
         # Basic Gantt chart setup
         mermaid = [
             "gantt",
-            f"    title Timeline of Pipeline {self.pipeline_id}",
+            "    title Pipeline timeline",
             "    dateFormat  HH:mm:ss",
             "    axisFormat  %H:%M:%S",
             "    todayMarker off",
@@ -787,11 +787,12 @@ Onlive version: https://gitlabviz.pythonanywhere.com/
             get_mermaid_config(), allow_elk_layout=args.output != "kroki.io"
         )
 
+        pipeline_data = fetch_pipeline_data(
+            gitlab_url, token, project_path, pipeline_id
+        )
+
         visualizer = GitLabPipelineVisualizer(
-            project_path,
-            pipeline_id,
-            token,
-            gitlab_url,
+            pipeline_data,
             args.verbose,
             args.mode,
             mermaid_config,
