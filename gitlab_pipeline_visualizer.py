@@ -16,11 +16,13 @@ from copy import deepcopy
 from datetime import datetime
 from operator import itemgetter
 from pathlib import Path
-from pprint import pprint
 from textwrap import dedent, indent
 from urllib.parse import urlparse
 
 import requests
+
+logger = logging.getLogger("GitLabPipelineVisualizer")
+
 
 DEFAULT_MERMAID_CONFIG = """\
 layout: elk
@@ -84,34 +86,27 @@ def fetch_pipeline_data(gitlab_url, gitlab_token, project_path, pipeline_id):
     }
 
     url = f"{gitlab_url}/api/graphql"
+    logger.info(url)
     response = requests.post(
         url, headers=headers, json={"query": query, "variables": variables}
     )
+    try:
+        json_data = response.json()
+        logger.debug(json.dumps(response.json(), indent=2))
+    except Exception:
+        logger.debug(response.content)
+
     response.raise_for_status()
 
-    return response.json()
+    return json_data or response.content
 
 
 class GitLabPipelineVisualizer:
     def __init__(
         self,
         pipeline_data,
-        verbose=0,
     ):
         self.pipeline_data = pipeline_data["data"]["project"]["pipeline"]
-        self.setup_logging(verbose)
-
-    def setup_logging(self, verbose):
-        self.logger = logging.getLogger("GitLabPipelineVisualizer")
-        handler = logging.StreamHandler(sys.stdout)
-        formatter = logging.Formatter("%(message)s")
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
-
-        if verbose >= 1:
-            self.logger.setLevel(logging.INFO)
-        if verbose >= 2:
-            self.logger.setLevel(logging.DEBUG)
 
     def deduplicate_jobs(self, jobs):
         """Handle multiple runs of the same job, numbering them and adjusting dependencies.
@@ -679,6 +674,18 @@ def parse_gitlab_url(url):
         )
 
 
+def setup_logging(verbose):
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = logging.Formatter("%(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    if verbose >= 1:
+        logger.setLevel(logging.INFO)
+    if verbose >= 2:
+        logger.setLevel(logging.DEBUG)
+
+
 def open_url_in_browser(url):
     """Open URL in the default web browser."""
 
@@ -789,6 +796,8 @@ Onlive version: https://gitlabviz.pythonanywhere.com/
         sys.exit(1)
 
     try:
+        setup_logging(args.verbose)
+
         gitlab_url, project_path, pipeline_id = parse_gitlab_url(args.url)
 
         # Get Mermaid config from config file or use default
@@ -800,7 +809,6 @@ Onlive version: https://gitlabviz.pythonanywhere.com/
 
         visualizer = GitLabPipelineVisualizer(
             pipeline_data,
-            args.verbose,
         )
 
         # Get the mermaid diagram content

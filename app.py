@@ -6,9 +6,13 @@ from gitlab_pipeline_visualizer import (
     GitLabPipelineVisualizer,
     fetch_pipeline_data,
     parse_gitlab_url,
+    setup_logging,
 )
 
 app = Flask(__name__)
+
+
+setup_logging(0)
 
 
 @app.route("/")
@@ -51,7 +55,6 @@ def visualize():
         # Create visualizer instance
         visualizer = GitLabPipelineVisualizer(
             pipeline_data,
-            verbose=0,
         )
 
         # Generate diagram
