@@ -22,21 +22,20 @@
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
-        }
-        
-        .form-group {
-            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
         }
         
         label {
             display: block;
+            margin-left: 4px;
             margin-bottom: 5px;
         }
         
         input[type="text"], input[type="password"], select, textarea {
             width: 100%;
             padding: 8px;
-            margin-bottom: 10px;
             border-radius: 8px; ;
             border: 3px solid #eee;
         }
@@ -44,13 +43,13 @@
         .help-text {
             font-size: 0.9em;
             color: #666;
-            margin: 4px 0 10px;
+            margin: 6px;
         }
         button[type=submit] + .help-text {
             margin: 0;
         }
         
-         button, a.button {
+        button, a.button {
             background-color: #4CAF50;
             color: white;
             border: none;
@@ -74,10 +73,12 @@
             margin-top: 10px;
             max-width: 800px;
             margin: 10px auto;
+            text-align: center;
+            display: none;
         }
         
         #result {
-            margin: 20px auto;
+            margin: 10px auto;
             max-width: 1920px;
             width: 100%;
             overflow-x: auto;
@@ -101,10 +102,14 @@
 
         #mermaid {
             background: white;
-            padding: 10px;
             width: 100%;
             display: flex;
             justify-content: stretch;
+        }
+        #mermaid > p {
+            text-align: center;
+            width: 100%;
+            margin: 0;
         }
         #mermaid > svg {
             max-width: unset !important;
@@ -115,18 +120,14 @@
             padding: 20px;
         }
 
-        details {
-            margin-top: 15px;
-        }
-
         summary {
-            padding: 10px;
+            padding: 6px;
             cursor: pointer;
             border-radius: 8px;
             font-size: smaller;
         }
 
-        summary:hover {
+        details:not([open]) summary:hover {
             background-color: #ebebeb;
         }
 
@@ -161,6 +162,9 @@
             <label for="url">GitLab Pipeline URL:</label>
             <input type="text" id="url" name="url" required 
                    placeholder="https://gitlab.com/group/project/-/pipelines/123">
+            <div class="help-text">
+                We won't access it directly, we only extract the host, project path and pipeline id for the API call
+            </div>
         </div>
         
         <div class="form-group">
@@ -193,8 +197,8 @@
             <div class="form-group">
                 <textarea id="mermaid_config" name="mermaid_config">{{ default_config }}</textarea>
                 <div class="help-text">
-                    Note: Configuration options are passed directly to the output format without validation. 
-                    Not all Mermaid configurations work with all output formats (e.g., ELK layout does not work on kroki, but we skip the line it in this case has it's a know case).
+                    Note: Configuration options are passed directly with the mermaid generated content, without validation.
+                    Not all Mermaid configurations may work, but we handle some know case, like the ELK layout not working on kroki.io not.
                 </div>
             </div>
         </details>
@@ -331,7 +335,7 @@
         document.getElementById('visualizerForm').onsubmit = async (e) => {
             e.preventDefault();
             errorDiv.style.display = 'none';
-            mermaidDiv.innerHTML = "Preparing visualization..."
+            mermaidDiv.innerHTML = "<p>Preparing visualization...</p>"
             resultDiv.style.display = 'block';
 
 
@@ -354,7 +358,7 @@
 
                 } else {
                     resultDiv.style.display = 'none';
-                    errorDiv.textContent = data.error || 'An error occurred';
+                    errorDiv.textContent = 'An error occurred while processing your request';
                     errorDiv.style.display = 'block';
                 }
             } catch (error) {
