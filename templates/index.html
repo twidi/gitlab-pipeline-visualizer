@@ -50,7 +50,7 @@
             margin: 0;
         }
         
-         button {
+         button, a.button {
             background-color: #4CAF50;
             color: white;
             border: none;
@@ -61,7 +61,7 @@
             transition: background-color 0.2s;
         }
         
-        button:hover {
+        button:hover, a.button:hover {
             background-color: #45a049;
         }
 
@@ -75,9 +75,6 @@
             max-width: 800px;
             margin: 10px auto;
         }
-        #error:empty {
-            margin: 0;
-        }
         
         #result {
             margin: 20px auto;
@@ -90,7 +87,7 @@
         }
         
 
-        .diagram-actions {
+        #diagram-actions {
             position: absolute;
             top: 20px;
             left: 10px;
@@ -98,18 +95,18 @@
             gap: 10px;
         }
 
-        #result:hover .diagram-actions {
+        #result:hover #diagram-actions {
             display: flex;
         }
 
-        .mermaid {
+        #mermaid {
             background: white;
             padding: 10px;
             width: 100%;
             display: flex;
             justify-content: stretch;
         }
-        .mermaid > svg {
+        #mermaid > svg {
             max-width: unset !important;
         }
 
@@ -184,15 +181,6 @@
             </select>
         </div>
         
-        <div class="form-group">
-            <label for="output">Output Format:</label>
-            <select id="output" name="output">
-                <option value="mermaid">Mermaid (rendered)</option>
-                <option value="mermaid.live">Mermaid.live URL</option>
-                <option value="kroki.io">Kroki.io URL</option>
-            </select>
-        </div>
-        
         <div style="display: flex; gap: 1em; align-items: center;">
             <button type="submit">Generate Diagram</button>
             <div class="help-text">
@@ -214,7 +202,16 @@
     </form>
 
     <div id="error"></div>
-    <div id="result"></div>
+
+    <div id="result" style="display: none;">
+        <div id="mermaid" class="mermaid"></div>
+        <div id="diagram-actions">
+            <button id="copyBtn" class="">Copy as PNG</button>
+            <button id="downloadBtn" class="">Download as PNG</button>
+            <a id="mermaidLiveBtn" class="button" target="_blank">Open in Mermaid Live</a>
+            <a id="krokiIoBtn" class="button" target="_blank">Open in Kroki.io</a>
+        </div>
+    </div>
 
     <canvas id="conversionCanvas"></canvas>
         
@@ -223,6 +220,24 @@
         import elkLayouts from 'https://unpkg.com/@mermaid-js/layout-elk@0.1.5/dist/mermaid-layout-elk.esm.min.mjs';
         mermaid.registerLayoutLoaders(elkLayouts);        // Initialize mermaid
         mermaid.initialize({ startOnLoad: false });
+
+        const form = document.getElementById('visualizerForm');
+        const errorDiv = document.getElementById('error');
+        const resultDiv = document.getElementById('result');
+        const mermaidDiv = document.getElementById('mermaid');
+        const copyBtn = document.getElementById('copyBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const mermaidLiveBtn = document.getElementById('mermaidLiveBtn');
+        const krokiIoBtn = document.getElementById('krokiIoBtn');
+
+        let cachedPngData = null;
+        async function getPngData() {
+            if (!cachedPngData) {
+                const svg = resultDiv.querySelector('svg');
+                cachedPngData = await svgToPng(svg);
+            }
+            return cachedPngData;
+        }
 
         function svgToPng(svgElement) {
             return new Promise((resolve, reject) => {
@@ -284,13 +299,42 @@
             }
         }
 
+        downloadBtn.onclick = async () => {
+            try {
+                const pngData = await getPngData();
+                downloadPNG(pngData);
+            } catch (err) {
+                console.error('PNG conversion failed:', err);
+                errorDiv.textContent = 'Failed to generate PNG';
+            }
+        };
+        copyBtn.onclick = async (e) => {
+            try {
+                const pngData = await getPngData();
+                const success = await copyPNGToClipboard(pngData);
+                if (success) {
+                    e.target.textContent = 'Copied!';
+                    e.target.classList.add('copied');
+                    setTimeout(() => {
+                        e.target.textContent = 'Copy PNG';
+                        e.target.classList.remove('copied');
+                    }, 2000);
+                } else {
+                    throw new Error('Copy failed');
+                }
+            } catch (err) {
+                console.error('PNG copy failed:', err);
+                errorDiv.textContent = 'Failed to copy PNG';
+            }
+        };
+
         document.getElementById('visualizerForm').onsubmit = async (e) => {
             e.preventDefault();
-            
-            const form = e.target;
-            const errorDiv = document.getElementById('error');
-            const resultDiv = document.getElementById('result');
-            
+            errorDiv.style.display = 'none';
+            mermaidDiv.innerHTML = "Preparing visualization..."
+            resultDiv.style.display = 'block';
+
+
             try {
                 const response = await fetch('/visualize', {
                     method: 'POST',
@@ -300,67 +344,23 @@
                 const data = await response.json();
                 
                 if (response.ok) {
-                    errorDiv.textContent = '';
-                    
-                    if (data.type === 'mermaid') {
-                        resultDiv.innerHTML = `
-                            <div class="mermaid">${data.content}</div>
-                            <div class="diagram-actions">
-                                <button class="download-png">Download PNG</button>
-                                <button class="copy-png">Copy PNG</button>
-                            </div>
-                        `;
-                        await mermaid.init(undefined, document.querySelectorAll('.mermaid'));
 
-                        let cachedPngData = null;
-                        async function getPngData() {
-                            if (!cachedPngData) {
-                                const svg = resultDiv.querySelector('svg');
-                                cachedPngData = await svgToPng(svg);
-                            }
-                            return cachedPngData;
-                        }
+                    const { svg } = await mermaid.render("mermaid_content", data.mermaid);
+                    console.log(svg, mermaidDiv);
+                    mermaidDiv.innerHTML = svg;
+                    cachedPngData = null;
+                    mermaidLiveBtn.href = data.mermaid_live;
+                    krokiIoBtn.href = data.kroki_io;
 
-                        resultDiv.querySelector('.download-png').onclick = async () => {
-                            try {
-                                const pngData = await getPngData();
-                                downloadPNG(pngData);
-                            } catch (err) {
-                                console.error('PNG conversion failed:', err);
-                                errorDiv.textContent = 'Failed to generate PNG';
-                            }
-                        };
-
-                        resultDiv.querySelector('.copy-png').onclick = async (e) => {
-                            try {
-                                const pngData = await getPngData();
-                                const success = await copyPNGToClipboard(pngData);
-                                if (success) {
-                                    e.target.textContent = 'Copied!';
-                                    e.target.classList.add('copied');
-                                    setTimeout(() => {
-                                        e.target.textContent = 'Copy PNG';
-                                        e.target.classList.remove('copied');
-                                    }, 2000);
-                                } else {
-                                    throw new Error('Copy failed');
-                                }
-                            } catch (err) {
-                                console.error('PNG copy failed:', err);
-                                errorDiv.textContent = 'Failed to copy PNG';
-                            }
-                        };
-                    } else if (data.type === 'url') {
-                        const output = document.getElementById("output").value;
-                        resultDiv.innerHTML = `<p class="url-result"><a href="${data.content}" target="_blank">View on ${output}</a></p>`;
-                    }
                 } else {
+                    resultDiv.style.display = 'none';
                     errorDiv.textContent = data.error || 'An error occurred';
-                    resultDiv.innerHTML = '';
+                    errorDiv.style.display = 'block';
                 }
             } catch (error) {
+                resultDiv.style.display = 'none';
                 errorDiv.textContent = 'An error occurred while processing your request';
-                resultDiv.innerHTML = '';
+                errorDiv.style.display = 'block';
             }
         };
     </script>

@@ -58,22 +58,18 @@ def visualize():
         # Generate diagram
         mermaid_content = visualizer.generate_mermaid_content(mode)
 
-        # Handle different output formats
-        if output_format == "mermaid":
-            return jsonify(
-                {
-                    "type": "mermaid",
-                    "content": visualizer.generate_mermaid(
-                        mermaid_content, mermaid_config
-                    ),
-                }
-            )
-        elif output_format == "mermaid.live":
-            url = visualizer.generate_mermaid_live_url(mermaid_content, mermaid_config)
-            return jsonify({"type": "url", "content": url})
-        elif output_format == "kroki.io":
-            url = visualizer.generate_kroki_io_url(mermaid_content, mermaid_config)
-            return jsonify({"type": "url", "content": url})
+        # Generate all three formats
+        return jsonify(
+            {
+                "mermaid": visualizer.generate_mermaid(mermaid_content, mermaid_config),
+                "mermaid_live": visualizer.generate_mermaid_live_url(
+                    mermaid_content, mermaid_config
+                ),
+                "kroki_io": visualizer.generate_kroki_io_url(
+                    mermaid_content, mermaid_config
+                ),
+            }
+        )
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
