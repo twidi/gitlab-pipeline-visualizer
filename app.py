@@ -21,7 +21,6 @@ def visualize():
     try:
         # Get common form data
         mode = request.form.get("mode", "timeline")
-        output_format = request.form.get("output", "mermaid")
         mermaid_config = request.form.get("mermaid_config", DEFAULT_MERMAID_CONFIG)
 
         # Determine input method and get pipeline data
