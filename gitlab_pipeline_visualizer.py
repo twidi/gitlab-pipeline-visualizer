@@ -97,12 +97,8 @@ class GitLabPipelineVisualizer:
         self,
         pipeline_data,
         verbose=0,
-        mode="timeline",
-        mermaid_config=None,
     ):
         self.pipeline_data = pipeline_data["data"]["project"]["pipeline"]
-        self.mode = mode
-        self.mermaid_config = mermaid_config or DEFAULT_MERMAID_CONFIG
         self.setup_logging(verbose)
 
     def setup_logging(self, verbose):
@@ -310,11 +306,6 @@ class GitLabPipelineVisualizer:
         dependencies = self.build_dependency_graph(jobs_dict, ordered_stages)
         return ordered_stages, jobs_dict, dependencies
 
-    def wrap_mermaid_config(self, config_str):
-        """Wrap the config in the required Mermaid format."""
-        config_str = indent(dedent(config_str).strip("\n"), "  ")
-        return f"---\nconfig:\n{config_str}\n---\n"
-
     def format_duration(self, duration_seconds):
         """Format duration in a Mermaid-friendly way: (Xmn SS) or (SS)"""
         minutes = int(duration_seconds // 60)
@@ -496,15 +487,55 @@ class GitLabPipelineVisualizer:
 
         return "\n".join(mermaid)
 
-    def generate_mermaid_diagram(self):
-        """Generate a Mermaid diagram based on the selected mode."""
-        wrapped_config = self.wrap_mermaid_config(self.mermaid_config)
-        if self.mode == "deps":
-            return wrapped_config + self.generate_mermaid_deps()
-        elif self.mode == "timeline":
-            return wrapped_config + self.generate_mermaid_timeline()
+    def generate_mermaid_content(self, mode):
+        """Generate raw Mermaid content based on the selected mode."""
+        if mode == "deps":
+            return self.generate_mermaid_deps()
+        elif mode == "timeline":
+            return self.generate_mermaid_timeline()
         else:
-            raise ValueError(f"Unsupported mode: {self.mode}")
+            raise ValueError(f"Unsupported mode: {mode}")
+
+    @staticmethod
+    def generate_mermaid(mermaid_content, mermaid_config):
+        """Generate a complete Mermaid diagram by combining configuration and content."""
+        mermaid_config = prepare_mermaid_config(mermaid_config)
+        wrapped_config = wrap_mermaid_config(mermaid_config)
+        return wrapped_config + mermaid_content
+
+    @staticmethod
+    def generate_mermaid_live_url(mermaid_content, mermaid_config):
+        """Generate a URL for mermaid.live with the diagram content."""
+        mermaid_config = prepare_mermaid_config(mermaid_config)
+        wrapped_config = wrap_mermaid_config(mermaid_config)
+        mermaid_content = wrapped_config + mermaid_content
+
+        # Create the state object expected by mermaid.live
+        state = {
+            "code": mermaid_content,
+            "mermaid": '{"theme":"default"}',
+            "autoSync": True,
+            "updateDiagram": True,
+        }
+
+        # Encode the state object
+        json_str = json.dumps(state)
+        base64_str = base64.urlsafe_b64encode(json_str.encode()).decode().rstrip("=")
+
+        return f"https://mermaid.live/edit#{base64_str}"
+
+    @staticmethod
+    def generate_kroki_io_url(mermaid_content, mermaid_config):
+        """Generate a URL for kroki.io PNG rendering."""
+        mermaid_config = prepare_mermaid_config(mermaid_config, allow_elk_layout=False)
+        wrapped_config = wrap_mermaid_config(mermaid_config)
+        mermaid_content = wrapped_config + mermaid_content
+
+        # Deflate and base64 encode the content as required by kroki
+        deflated = zlib.compress(mermaid_content.encode("utf-8"))
+        encoded = base64.urlsafe_b64encode(deflated).decode().rstrip("=")
+
+        return f"https://kroki.io/mermaid/png/{encoded}"
 
 
 def get_config_paths():
@@ -601,6 +632,12 @@ def prepare_mermaid_config(config_str, allow_elk_layout=True):
     return config_str
 
 
+def wrap_mermaid_config(config_str):
+    """Wrap the config in the required Mermaid format."""
+    config_str = indent(dedent(config_str).strip("\n"), "  ")
+    return f"---\nconfig:\n{config_str}\n---\n"
+
+
 def parse_gitlab_url(url):
     """
     Parse a GitLab pipeline URL to extract gitlab url, project path and pipeline ID.
@@ -640,34 +677,6 @@ def parse_gitlab_url(url):
             "Invalid GitLab pipeline URL path format. "
             "Expected format: https://GITLAB_HOST/GROUP/PROJECT/-/pipelines/PIPELINE_ID"
         )
-
-
-def generate_mermaid_live_url(mermaid_content):
-    """Generate a URL for mermaid.live with the diagram content."""
-
-    # Create the state object expected by mermaid.live
-    state = {
-        "code": mermaid_content,
-        "mermaid": '{"theme":"default"}',
-        "autoSync": True,
-        "updateDiagram": True,
-    }
-
-    # Encode the state object
-    json_str = json.dumps(state)
-    base64_str = base64.urlsafe_b64encode(json_str.encode()).decode().rstrip("=")
-
-    return f"https://mermaid.live/edit#{base64_str}"
-
-
-def generate_kroki_io_url(mermaid_content):
-    """Generate a URL for kroki.io PNG rendering."""
-
-    # Deflate and base64 encode the content as required by kroki
-    deflated = zlib.compress(mermaid_content.encode("utf-8"))
-    encoded = base64.urlsafe_b64encode(deflated).decode().rstrip("=")
-
-    return f"https://kroki.io/mermaid/png/{encoded}"
 
 
 def open_url_in_browser(url):
@@ -783,9 +792,7 @@ Onlive version: https://gitlabviz.pythonanywhere.com/
         gitlab_url, project_path, pipeline_id = parse_gitlab_url(args.url)
 
         # Get Mermaid config from config file or use default
-        mermaid_config = prepare_mermaid_config(
-            get_mermaid_config(), allow_elk_layout=args.output != "kroki.io"
-        )
+        mermaid_config = get_mermaid_config()
 
         pipeline_data = fetch_pipeline_data(
             gitlab_url, token, project_path, pipeline_id
@@ -794,22 +801,20 @@ Onlive version: https://gitlabviz.pythonanywhere.com/
         visualizer = GitLabPipelineVisualizer(
             pipeline_data,
             args.verbose,
-            args.mode,
-            mermaid_config,
         )
 
         # Get the mermaid diagram content
-        mermaid_content = visualizer.generate_mermaid_diagram()
+        mermaid_content = visualizer.generate_mermaid_content(args.mode)
 
         # Handle different output formats
         url = None
         if args.output == "mermaid":
-            print(mermaid_content)
+            print(visualizer.generate_mermaid(mermaid_content, mermaid_config))
         elif args.output == "mermaid.live":
-            url = generate_mermaid_live_url(mermaid_content)
+            url = visualizer.generate_mermaid_live_url(mermaid_content, mermaid_config)
             print(url)
         elif args.output == "kroki.io":
-            url = generate_kroki_io_url(mermaid_content)
+            url = visualizer.generate_kroki_io_url(mermaid_content, mermaid_config)
             print(url)
 
         # Open URL in browser if requested
