@@ -13,7 +13,7 @@ import webbrowser
 import zlib
 from collections import defaultdict
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 from operator import itemgetter
 from pathlib import Path
 from textwrap import dedent, indent
@@ -159,7 +159,7 @@ class GitLabPipelineVisualizer:
                         run
                         for run in job_runs[need]
                         if run["finishedAt"] and run["finishedAt"] < job_start
-                    ] or job_runs
+                    ] or job_runs[need]
                     updated_needs.append(eligible_runs[-1]["identifier"])
                 else:
                     # Non-duplicated job - keep as is
@@ -264,14 +264,18 @@ class GitLabPipelineVisualizer:
         )
 
     def normalize_jobs(self, jobs_data):
-        """Simplify jobs data and order them by `queuedAt`, removing alls that are not in success/failed status"""
+        """Simplify jobs data and order them by `queuedAt`, removing alls that are not in running/success/failed status"""
         return sorted(
             [
                 job
                 | {
                     "queuedAt": self.str_to_datetime(job["queuedAt"]),
-                    "startedAt": self.str_to_datetime(job["startedAt"]),
-                    "finishedAt": self.str_to_datetime(job["finishedAt"]),
+                    "startedAt": (started_at := self.str_to_datetime(job["startedAt"])),
+                    "finishedAt": (
+                        self.str_to_datetime(job["finishedAt"])
+                        if job["finishedAt"]
+                        else started_at + timedelta(seconds=job["duration"])
+                    ),
                     "identifier": self.name_to_identifier(job["name"]),
                     "stage": job["stage"]["name"],
                     "needs": (
@@ -284,7 +288,10 @@ class GitLabPipelineVisualizer:
                     ),
                 }
                 for job in jobs_data
-                if job["status"] in ("SUCCESS", "FAILED") and job.get("queuedAt")
+                if job["status"] in ("SUCCESS", "FAILED", "RUNNING")
+                and job.get("queuedAt")
+                and job.get("startedAt")
+                and job.get("duration")
             ],
             key=itemgetter("queuedAt"),
         )
@@ -304,43 +311,41 @@ class GitLabPipelineVisualizer:
         dependencies = self.build_dependency_graph(jobs_dict, ordered_stages)
         return ordered_stages, jobs_dict, dependencies
 
-    def format_duration(self, duration_seconds):
+    def format_duration(self, duration_seconds, job_status):
         """Format duration in a Mermaid-friendly way: (Xmn SS) or (SS)"""
         minutes = int(duration_seconds // 60)
         seconds = int(duration_seconds % 60)
 
+        status_part = f", {job_status.lower()}" if job_status == "RUNNING" else ""
+
         if minutes == 0:
-            return f"({seconds}s)"
+            return f"({seconds}s{status_part})"
         else:
-            return f"({minutes}mn {seconds:02d})"
+            return f"({minutes}mn {seconds:02d}{status_part})"
 
     def generate_mermaid_deps(self):
         """Generate a Mermaid state diagram representation of the pipeline dependencies."""
         stages, jobs, dependencies = self.process_pipeline_data()
-
-        failed_jobs = [
-            job_id for job_id, job in jobs.items() if job["status"] == "FAILED"
-        ]
 
         mermaid = [
             "stateDiagram-v2",
             "",
         ]
 
-        # Add style definitions for failed jobs if any exist
-        if failed_jobs:
-            mermaid.extend(
-                [
-                    "    %% Style definitions",
-                    "    classDef failed fill:#f2dede,stroke:#a94442,color:#a94442",
-                    "",
-                ]
-            )
+        # Add style definitions for failed and running jobs
+        mermaid.extend(
+            [
+                "    %% Style definitions",
+                "    classDef failed fill:#f2dede,stroke:#a94442,color:#a94442",
+                "    classDef running fill:#f2f1de,stroke:#A89642,color:#A89642",
+                "",
+            ]
+        )
 
         # Start pipeline container
         mermaid.extend(
             [
-                f'    state "Pipeline dependencies" as pipeline {{',
+                '    state "Pipeline dependencies" as pipeline {',
                 "",
                 "    %% States with duration",
             ]
@@ -349,7 +354,7 @@ class GitLabPipelineVisualizer:
         # Add job states with duration
         for job_id, job in jobs.items():
             mermaid.append(
-                f'    state "{job["name"]}<br>{self.format_duration(job["duration"])}" as {job_id}'
+                f'    state "{job["name"]}<br>{self.format_duration(job["duration"], job["status"])}" as {job_id}'
             )
 
         mermaid.append("")
@@ -369,8 +374,11 @@ class GitLabPipelineVisualizer:
         mermaid.append("    }")
 
         # Add class declarations for failed jobs after the state definition
-        for job_id in failed_jobs:
-            mermaid.append(f"class {job_id} failed")
+        for job_id, job in jobs.items():
+            if job["status"] == "FAILED":
+                mermaid.append(f"class {job_id} failed")
+            if job["status"] == "RUNNING":
+                mermaid.append(f"class {job_id} running")
 
         return "\n".join(mermaid)
 
@@ -461,10 +469,12 @@ class GitLabPipelineVisualizer:
         ordered_jobs = self.calculate_job_order(jobs, dependencies)
 
         # Helper to format job status for Mermaid
-        def format_job_status(job):
-            if "status" in job:
-                return "crit" if job["status"] == "FAILED" else "active"
-            return ""
+        def get_gantt_tags(job):
+            return (
+                "crit"
+                if job["status"] == "FAILED"
+                else "active" if job["status"] == "RUNNING" else ""
+            )
 
         # Add each job to the timeline
         for job_id in ordered_jobs:
@@ -475,12 +485,14 @@ class GitLabPipelineVisualizer:
                 relative_start = (job["startedAt"] - pipeline_start).total_seconds()
 
                 start_time = f"{int(relative_start // 3600):02d}:{int((relative_start % 3600) // 60):02d}:{int(relative_start % 60):02d}"
-                formatted_duration = self.format_duration(job["duration"])
+                formatted_duration = self.format_duration(
+                    job["duration"], job["status"]
+                )
 
-                status = format_job_status(job)
-                status_part = f"{status}, " if status else ""
+                gantt_tags = get_gantt_tags(job)
+                gantt_tags_part = f"{gantt_tags}, " if gantt_tags else ""
                 mermaid.append(
-                    f"    {job['name']} {formatted_duration:<10} :{status_part}{job_id}, {start_time}, {job['duration']}s"
+                    f"    {job['name']} {formatted_duration:<10} :{gantt_tags_part}{job_id}, {start_time}, {job['duration']}s"
                 )
 
         return "\n".join(mermaid)
