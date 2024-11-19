@@ -77,6 +77,30 @@ config =
 
 A web interface is available that provides a user-friendly way to generate pipeline visualizations. It uses the same core functionality as the CLI version.
 
+An online version exists at https://gitlabviz.pythonanywhere.com/
+
+
+The interface:
+
+![Timeline visualization example](web-example1.png)
+
+With the result:
+
+![Timeline visualization example](web-example2.png)
+
+Possibility to not use a gitlab token asking to run the GraphQL query:
+
+![Timeline visualization example](web-example3.png)
+
+Example of usage of the Gitlab GraphQL query explorer:
+
+![Timeline visualization example](web-example4.png)
+
+With the result from a GraphQL query:
+
+![Timeline visualization example](web-example5.png)
+
+
 To run the web interface:
 
 ```bash
