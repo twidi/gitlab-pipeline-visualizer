@@ -4,6 +4,24 @@
 <head>
     <title>GitLab Pipeline Visualizer</title>
     <style>
+        :root {
+            --bg-color: #ccd;
+            --text-color: #444;
+            --text-color-light: #666;
+            --input-bgcolor: #e6e6f2;
+            --border-color: #9797bf;
+            --accent-color: #4d4dac;
+            --accent-accent-color: #3939a6;
+
+            --success-color: #45a049;
+            --failure-color: #dd0000;
+
+            --border-width: 3px;
+        }
+        html {
+            background: var(--bg-color);
+            color: var(--text-color);
+        }
         * {
             box-sizing: border-box;
         }
@@ -26,31 +44,47 @@
             flex-direction: column;
             gap: 15px;
         }
-        
+
         label {
             display: block;
             margin-left: 4px;
             margin-bottom: 5px;
+            font-weight: 600;
+            cursor: pointer;
         }
-        
+
         input[type="text"], input[type="password"], select, textarea {
             width: 100%;
             padding: 8px;
             border-radius: 8px; ;
-            border: 3px solid #eee;
+            border: var(--border-width) solid var(--border-color);
+            background: var(--input-background);
+            color: var(--text-color);
+            /* for :autofill, we need to force like that */
+            filter: none;
+            box-shadow: 0 0 0 100px var(--input-bgcolor) inset !important;
+        }
+
+        input[type="text"]:focus, input[type="password"]:focus, select:focus, textarea:focus {
+            --border-color: var(--accent-color);
+            outline: 0;
+        }
+        input[disabled], select[disabled], textarea[disabled] {
+            opacity: 0.5;
         }
 
         .help-text {
             font-size: 0.9em;
-            color: #666;
+            color: var(--text-color-light);
             margin: 6px;
         }
+
         button[type=submit] + .help-text {
             margin: 0;
         }
         
         button, a.button {
-            background-color: #4CAF50;
+            background-color: var(--accent-color);
             color: white;
             border: none;
             padding: 8px 16px;
@@ -61,15 +95,15 @@
         }
         
         button:hover, a.button:hover {
-            background-color: #45a049;
+            background-color: var(--accent-accent-color);
         }
 
         button.copied {
-            background-color: #2196F3;
+            background-color: var(--success-color);
         }
         
         #error {
-            color: red;
+            color: var(--failure-color);
             margin-top: 10px;
             max-width: 800px;
             margin: 10px auto;
@@ -122,13 +156,10 @@
 
         summary {
             padding: 6px;
+            padding-left: 0;
             cursor: pointer;
             border-radius: 8px;
             font-size: smaller;
-        }
-
-        details:not([open]) summary:hover {
-            background-color: #ebebeb;
         }
 
         details .form-group {
