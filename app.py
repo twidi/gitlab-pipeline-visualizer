@@ -44,7 +44,7 @@ def visualize():
         mermaid_config = request.form.get("mermaid_config", DEFAULT_MERMAID_CONFIG)
 
         # Determine input method and get pipeline data
-        if "pipeline_data" in request.form:
+        if request.form.get("pipeline_data", "").strip():
             # Direct pipeline data input
             try:
                 pipeline_data = request.form.get("pipeline_data")
