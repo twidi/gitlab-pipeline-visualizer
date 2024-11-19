@@ -293,7 +293,7 @@ class GitLabPipelineVisualizer:
                 and job.get("startedAt")
                 and job.get("duration")
             ],
-            key=itemgetter("queuedAt"),
+            key=itemgetter("startedAt"),
         )
 
     def process_pipeline_data(self):
@@ -400,9 +400,7 @@ class GitLabPipelineVisualizer:
         ]
 
         # Sort independent jobs by start time
-        independent_jobs.sort(
-            key=lambda job_id: (jobs[job_id]["startedAt"] or datetime.max)
-        )
+        independent_jobs.sort(key=lambda job_id: jobs[job_id]["startedAt"])
 
         ordered_jobs = []
         processed_jobs = set()
@@ -420,15 +418,7 @@ class GitLabPipelineVisualizer:
                 if job_id in deps and dependent_id not in processed_jobs:
                     dependents.append(dependent_id)
 
-            # Sort dependents by readiness (how many of their dependencies are processed)
-            # and start time
-            def dependency_readiness(dependent_id):
-                deps = dependencies.get(dependent_id, [])
-                deps_ready = sum(1 for d in deps if d in processed_jobs)
-                start_time = jobs[dependent_id]["startedAt"] or datetime.max
-                return (deps_ready / len(deps) if deps else 1, start_time)
-
-            dependents.sort(key=dependency_readiness, reverse=True)
+            dependents.sort(key=lambda job_id: jobs[dependent_id]["startedAt"])
 
             # Process dependents that have all dependencies met
             for dependent_id in dependents:
