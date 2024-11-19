@@ -62,7 +62,7 @@
             color: var(--text-color);
             /* for :autofill, we need to force like that */
             filter: none;
-            box-shadow: 0 0 0 100px var(--input-bgcolor) inset !important;
+            box-shadow: 0 0 0 200px var(--input-bgcolor) inset !important;
         }
 
         input[type="text"]:focus, input[type="password"]:focus, select:focus, textarea:focus {
@@ -71,6 +71,11 @@
         }
         input[disabled], select[disabled], textarea[disabled] {
             opacity: 0.5;
+        }
+
+        textarea {
+            font-family: monospace;
+            resize: vertical;
         }
 
         .help-text {
@@ -101,7 +106,76 @@
         button.copied {
             background-color: var(--success-color);
         }
+
+        #input_mode_token > div:first-of-type {
+             display: flex;
+             gap: 1em;
+             align-items: center;
+        }
+
+        #token[disabled] + .help-text {
+            display: none;
+        }
+        label[for="no_token"] {
+            font-weight: normal; 
+            display: flex; 
+            align-items: center; 
+            gap: .5em; 
+            font-size: 0.9em;
+        }
         
+        #input_mode_data {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            display: flex;
+            border-left: var(--border-width) solid var(--accent-color);
+            margin-left: 6px;
+            padding: 4px 0px 0 16px;
+        }
+
+        #input_mode_data p {
+            margin: 0;
+            font-size: 0.9em;
+        }
+        #graphql_inputs {
+            display: grid;
+            grid-auto-flow: column;
+            gap: 15px;
+        }
+
+        #graphql_inputs label + div {
+            display: grid;
+        }
+        #graphql_inputs label + div > * {
+             grid-column: 1;
+             grid-row: 1;
+        }
+        #graphql_inputs .copy-text-icon {
+            /* reset button stuff */
+            border: none;
+            background: transparent;
+            padding: 0;
+
+            justify-self: right;
+            width: 20px;
+            aspect-ratio: 448 / 512;
+            margin: 15px;
+            cursor: pointer;
+            --icon-color: var(--text-color-light);
+            z-index: 1;
+        }
+        #graphql_inputs .copy-text-icon svg path {
+            fill: var(--icon-color);
+            transition: fill 0.5s ease-out;
+        }
+        #graphql_inputs [data-copy-state="failure"] + .copy-text-icon {
+            --icon-color: var(--failure-color);
+        }
+        #graphql_inputs [data-copy-state="success"] + .copy-text-icon {
+            --icon-color: var(--success-color);
+        }
+
         #error {
             color: var(--failure-color);
             margin-top: 10px;
@@ -120,7 +194,6 @@
             justify-content: center;
             position: relative;
         }
-        
 
         #diagram-actions {
             position: absolute;
@@ -169,7 +242,6 @@
         #mermaid_config {
             height: 150px;
             font-family: monospace;
-            resize: vertical;
         }
 
         #conversionCanvas {
@@ -197,9 +269,12 @@
                 We won't access it directly, we only extract the host, project path and pipeline id for the API call
             </div>
         </div>
-        
-        <div class="form-group">
-            <label for="token">GitLab Token:</label>
+
+        <div class="form-group" id="input_mode_token">
+            <div>
+                <label for="token">GitLab Token:</label>
+                <label for="no_token" style="font-weight: normal; display: flex; align-items: center; gap: .5em; font-size: 0.9em;"><input type="checkbox" id="no_token"> Don't want or can't share an api token?</label>
+            </div>
             <input type="password" id="token" name="token" required>
             <div class="help-text">
                 A GitLab personal access token with at least <code>read_api</code> scope is required. 
@@ -207,7 +282,47 @@
                 You can create one in your GitLab settings under Access Tokens.
             </div>
         </div>
-        
+
+        <div class="form-groups" id="input_mode_data" style="display: none">
+            <p>If you don't want, or can't, pass a Gitlab Token, we'll ask you to get us the pipeline data needed to make the visualization.</p>
+            <p>
+                For that, go to 
+                <a id="graphql_explorer_url" href="https://gitlab.com/-/graphql-explorer" target="_blank">the Gitlab GraphQL explorer</a> 
+            and run the query based on the following query and variables:
+            </p>
+            <div id="graphql_inputs">
+                <div class="form-group">
+                    <label for="graphql-query">Query:</label>
+                    <div>
+                        <textarea id="graphql-query" rows="3" disabled></textarea>
+                        <button class="copy-text-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--!Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M208 0L332.1 0c12.7 0 24.9 5.1 33.9 14.1l67.9 67.9c9 9 14.1 21.2 14.1 33.9L448 336c0 26.5-21.5 48-48 48l-192 0c-26.5 0-48-21.5-48-48l0-288c0-26.5 21.5-48 48-48zM48 128l80 0 0 64-64 0 0 256 192 0 0-32 64 0 0 48c0 26.5-21.5 48-48 48L48 512c-26.5 0-48-21.5-48-48L0 176c0-26.5 21.5-48 48-48z"/></svg></button>
+                    </div>
+                    <div class="help-text">
+                        Copy this in the main query area (top left)
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="graphql-variables">Variables:</label>
+                    <div>
+                        <textarea id="graphql-variables" rows="3" disabled></textarea>
+                        <button class="copy-text-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--!Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M208 0L332.1 0c12.7 0 24.9 5.1 33.9 14.1l67.9 67.9c9 9 14.1 21.2 14.1 33.9L448 336c0 26.5-21.5 48-48 48l-192 0c-26.5 0-48-21.5-48-48l0-288c0-26.5 21.5-48 48-48zM48 128l80 0 0 64-64 0 0 256 192 0 0-32 64 0 0 48c0 26.5-21.5 48-48 48L48 512c-26.5 0-48-21.5-48-48L0 176c0-26.5 21.5-48 48-48z"/></svg></button>
+                    </div>
+                    <div class="help-text">
+                        Copy this in the variables area (bottom left)
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="pipeline_data">Result of the GraphQL query:</label>
+                <textarea id="pipeline_data" name="pipeline_data" rows="5"></textarea>
+                <div class="help-text">
+                    The pipeline data we'll use. Contains only the basic information needed.
+                </div>
+            </div>
+
+        </div>
+
         <div class="form-group">
             <label for="mode">Visualization Mode:</label>
             <select id="mode" name="mode">
@@ -255,6 +370,119 @@
         import elkLayouts from 'https://unpkg.com/@mermaid-js/layout-elk@0.1.5/dist/mermaid-layout-elk.esm.min.mjs';
         mermaid.registerLayoutLoaders(elkLayouts);        // Initialize mermaid
         mermaid.initialize({ startOnLoad: false });
+
+        const graphqlQuery = `{{ graphql_query }}`;
+        const graphqlVariablesTemplate =  JSON.stringify({{ variables_template|safe }}, null, 2);
+
+        function validatePipelineUrl(url) {
+            try {
+                // Parse URL
+                const parsedUrl = new URL(url);
+                
+                // Split path and remove empty parts
+                const pathParts = parsedUrl.pathname.split('/').filter(p => p);
+                
+                // Check format
+                const pipelineIndex = pathParts.indexOf('pipelines');
+                if (pipelineIndex < 2 || pathParts[pipelineIndex - 1] !== '-') {
+                    throw new Error();
+                }
+                
+                // Get pipeline ID and verify it's a number
+                const pipelineId = pathParts[pipelineIndex + 1];
+                if (!/^\d+$/.test(pipelineId)) {
+                    throw new Error();
+                }
+                
+                // Get project path
+                const projectPath = pathParts.slice(0, pipelineIndex - 1).join('/');
+                
+                return {
+                    gitlabUrl: `${parsedUrl.protocol}//${parsedUrl.host}`,
+                    projectPath,
+                    pipelineId
+                };
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function resetGraphqlInputCopyState(inputElement) {
+            if (inputElement.copyStateTimeout) {
+                clearTimeout(inputElement.copyStateTimeout);
+                inputElement.copyStateTimeout = null;
+            }
+            inputElement.dataset.copyState = "";
+        }
+        function setGraphqlInputCopyState(inputElement, state) {
+            resetGraphqlInputCopyState(inputElement);
+            inputElement.dataset.copyState = state;
+            inputElement.copyStateTimeout = setTimeout(() => {resetGraphqlInputCopyState(inputElement)}, 2000);
+        }
+
+        function copyToClipboard(inputElement) {
+            resetGraphqlInputCopyState(inputElement);
+            if (!(inputElement instanceof HTMLInputElement) && !(inputElement instanceof HTMLTextAreaElement)) {
+                throw new Error('Element must be an input or textarea');
+            }
+            try {
+                navigator.clipboard.writeText(inputElement.value)
+                    .then(() => setGraphqlInputCopyState(inputElement, "success"))
+                    .catch(() => setGraphqlInputCopyState(inputElement, "failure"))
+            } catch (err) {
+                setGraphqlInputCopyState(inputElement, "failure");
+            }
+        }
+
+        const tokenModeSwitcher = document.getElementById('no_token');
+        const inputModeTokenGroup = document.getElementById('input_mode_token');
+        const inputModeDataGroup = document.getElementById('input_mode_data');
+        const urlInput = document.getElementById('url');
+        const tokenInput = document.getElementById('token');
+        const explorerLink = document.getElementById('graphql_explorer_url');
+        const queryInput = document.getElementById('graphql-query');
+        const variablesInput = document.getElementById('graphql-variables');
+        const dataInput = document.getElementById('pipeline_data');
+
+        const onTokenModeChange = () => {
+            variablesInput.value = '';
+            dataInput.value = '';
+            errorDiv.style.display = 'none';
+
+            if (tokenModeSwitcher.checked) {
+                tokenInput.disabled = true;
+                tokenInput.required = false;
+                inputModeDataGroup.style.display = 'flex';
+                dataInput.disabled = false;
+                dataInput.required = true;
+
+                if (urlInput.value) {
+                    const parsed = validatePipelineUrl(urlInput.value);
+                    if (parsed) {
+                        resetGraphqlInputCopyState(queryInput);
+                        resetGraphqlInputCopyState(variablesInput);
+                        queryInput.value = graphqlQuery;
+                        variablesInput.value = graphqlVariablesTemplate.replace('%(PROJECT_PATH)s', parsed.projectPath).replace('%(PIPELINE_ID)s', parsed.pipelineId);
+                        explorerLink.href = `${parsed.gitlabUrl}/-/graphql-explorer`;
+                    }
+                }
+                if (!variablesInput.value) {
+                    errorDiv.textContent = "Pipeline must be filled in the form of https://GITLAB_HOST/GROUP/PROJECT/-/pipelines/PIPELINE_ID"
+                    errorDiv.style.display = 'block';
+                }
+            } else {
+                tokenInput.disabled = false;
+                tokenInput.required = true;
+                inputModeDataGroup.style.display = 'none';
+                dataInput.disabled = true;
+                dataInput.required = false;
+            }
+        };
+
+        tokenModeSwitcher.addEventListener("change", onTokenModeChange);
+        urlInput.addEventListener("change", onTokenModeChange);
+        queryInput.nextElementSibling.addEventListener("click", ev => { ev.preventDefault(); copyToClipboard(queryInput); });
+        variablesInput.nextElementSibling.addEventListener("click", ev => { ev.preventDefault(); copyToClipboard(variablesInput); });
 
         const form = document.getElementById('visualizerForm');
         const errorDiv = document.getElementById('error');
@@ -381,7 +609,6 @@
                 if (response.ok) {
 
                     const { svg } = await mermaid.render("mermaid_content", data.mermaid);
-                    console.log(svg, mermaidDiv);
                     mermaidDiv.innerHTML = svg;
                     cachedPngData = null;
                     mermaidLiveBtn.href = data.mermaid_live;

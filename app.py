@@ -1,10 +1,15 @@
 # app.py
+import json
+
 from flask import Flask, jsonify, render_template, request
 
 from gitlab_pipeline_visualizer import (
     DEFAULT_MERMAID_CONFIG,
+    GRAPHQL_QUERY,
     GitLabPipelineVisualizer,
     fetch_pipeline_data,
+    get_query_variables,
+    logger,
     parse_gitlab_url,
     setup_logging,
 )
@@ -17,7 +22,18 @@ setup_logging(0)
 
 @app.route("/")
 def index():
-    return render_template("index.html", default_config=DEFAULT_MERMAID_CONFIG)
+    # Get GraphQL query and variables template
+    variables_template = get_query_variables("%(PROJECT_PATH)s", "%(PIPELINE_ID)s")
+
+    # Convert to JSON strings for safe embedding in HTML
+    variables_template_json = json.dumps(variables_template, indent=2)
+
+    return render_template(
+        "index.html",
+        default_config=DEFAULT_MERMAID_CONFIG,
+        graphql_query=GRAPHQL_QUERY,
+        variables_template=variables_template_json,
+    )
 
 
 @app.route("/visualize", methods=["POST"])
@@ -31,9 +47,10 @@ def visualize():
         if "pipeline_data" in request.form:
             # Direct pipeline data input
             try:
-                pipeline_data = request.json.get("pipeline_data")
+                pipeline_data = request.form.get("pipeline_data")
                 if not pipeline_data:
                     raise ValueError("Pipeline data is empty or invalid")
+                pipeline_data = json.loads(pipeline_data)
             except Exception as e:
                 raise ValueError(f"Invalid pipeline data format: {str(e)}")
         else:
@@ -43,7 +60,7 @@ def visualize():
 
             if not gitlab_url or not gitlab_token:
                 raise ValueError(
-                    "Both GitLab URL and token are required when not providing pipeline data"
+                    "Either the pipeline data or both GitLab URL and token are required when not providing pipeline data"
                 )
 
             # Parse the GitLab URL and fetch data
@@ -74,6 +91,7 @@ def visualize():
         )
 
     except Exception as e:
+        logger.exception(e)
         return jsonify({"error": str(e)}), 400
 
 

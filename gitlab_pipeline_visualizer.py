@@ -30,6 +30,44 @@ gantt:
   useWidth: 1600
 """
 
+GRAPHQL_QUERY = """\
+query GetPipelineJobs($projectPath: ID!, $pipelineId: CiPipelineID!) {
+  project(fullPath: $projectPath) {
+    pipeline(id: $pipelineId) {
+      stages {
+        nodes {
+          name
+        }
+      }
+      jobs {
+        nodes {
+          name
+          status
+          stage {
+            name
+          }
+          needs {
+            nodes {
+              name
+            }
+          }
+          startedAt
+          finishedAt
+          duration
+          queuedAt
+        }
+      }
+    }
+  }
+}"""
+
+
+def get_query_variables(project_path, pipeline_id):
+    return {
+        "projectPath": project_path,
+        "pipelineId": f"gid://gitlab/Ci::Pipeline/{pipeline_id}",
+    }
+
 
 def fetch_pipeline_data(gitlab_url, gitlab_token, project_path, pipeline_id):
     """Fetch pipeline data using GraphQL.
@@ -43,42 +81,7 @@ def fetch_pipeline_data(gitlab_url, gitlab_token, project_path, pipeline_id):
     Returns:
         dict: Full API response data
     """
-    query = """
-    query GetPipelineJobs($projectPath: ID!, $pipelineId: CiPipelineID!) {
-      project(fullPath: $projectPath) {
-        pipeline(id: $pipelineId) {
-          stages {
-            nodes {
-              name
-            }
-          }
-          jobs {
-            nodes {
-              name
-              status
-              stage {
-                name
-              }
-              needs {
-                nodes {
-                  name
-                }
-              }
-              startedAt
-              finishedAt
-              duration
-              queuedAt
-            }
-          }
-        }
-      }
-    }
-    """
-
-    variables = {
-        "projectPath": project_path,
-        "pipelineId": f"gid://gitlab/Ci::Pipeline/{pipeline_id}",
-    }
+    variables = get_query_variables(project_path, pipeline_id)
 
     headers = {
         "Authorization": f"Bearer {gitlab_token}",
@@ -88,7 +91,7 @@ def fetch_pipeline_data(gitlab_url, gitlab_token, project_path, pipeline_id):
     url = f"{gitlab_url}/api/graphql"
     logger.info(url)
     response = requests.post(
-        url, headers=headers, json={"query": query, "variables": variables}
+        url, headers=headers, json={"query": GRAPHQL_QUERY, "variables": variables}
     )
     try:
         json_data = response.json()
