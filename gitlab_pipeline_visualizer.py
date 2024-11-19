@@ -10,7 +10,6 @@ import re
 import sys
 import traceback
 import webbrowser
-import zlib
 from collections import defaultdict
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -504,14 +503,12 @@ class GitLabPipelineVisualizer:
     @staticmethod
     def generate_mermaid(mermaid_content, mermaid_config):
         """Generate a complete Mermaid diagram by combining configuration and content."""
-        mermaid_config = prepare_mermaid_config(mermaid_config)
         wrapped_config = wrap_mermaid_config(mermaid_config)
         return wrapped_config + mermaid_content
 
     @staticmethod
-    def generate_mermaid_live_url(mermaid_content, mermaid_config):
+    def generate_mermaid_live_url(mermaid_content, mermaid_config, mode):
         """Generate a URL for mermaid.live with the diagram content."""
-        mermaid_config = prepare_mermaid_config(mermaid_config)
         wrapped_config = wrap_mermaid_config(mermaid_config)
         mermaid_content = wrapped_config + mermaid_content
 
@@ -527,20 +524,7 @@ class GitLabPipelineVisualizer:
         json_str = json.dumps(state)
         base64_str = base64.urlsafe_b64encode(json_str.encode()).decode().rstrip("=")
 
-        return f"https://mermaid.live/edit#{base64_str}"
-
-    @staticmethod
-    def generate_kroki_io_url(mermaid_content, mermaid_config):
-        """Generate a URL for kroki.io PNG rendering."""
-        mermaid_config = prepare_mermaid_config(mermaid_config, allow_elk_layout=False)
-        wrapped_config = wrap_mermaid_config(mermaid_config)
-        mermaid_content = wrapped_config + mermaid_content
-
-        # Deflate and base64 encode the content as required by kroki
-        deflated = zlib.compress(mermaid_content.encode("utf-8"))
-        encoded = base64.urlsafe_b64encode(deflated).decode().rstrip("=")
-
-        return f"https://kroki.io/mermaid/png/{encoded}"
+        return f"https://mermaid.live/{mode}#{base64_str}"
 
 
 def get_config_paths():
@@ -609,31 +593,6 @@ def get_mermaid_config():
         config_str = config["mermaid"]["config"].strip()
     except (KeyError, configparser.Error):
         config_str = DEFAULT_MERMAID_CONFIG
-    return config_str
-
-
-def prepare_mermaid_config(config_str, allow_elk_layout=True):
-    """Return the mermaid config string
-
-    Optionally filter out ELK layout configuration for services that don't support it.
-
-    Args:
-        config_str (str): The mermaid configuration
-        allow_elk_layout (bool): Whether to allow ELK layout in the configuration.
-                                Should be False for services like kroki.io that don't support it.
-
-    """
-    if not allow_elk_layout:
-        # Split into lines, filter out any line containing both "layout" and "elk",
-        # and rejoin the remaining lines
-        lines = config_str.split("\n")
-        lines = [
-            line
-            for line in lines
-            if not ("layout" in line.lower() and "elk" in line.lower())
-        ]
-        config_str = "\n".join(lines)
-
     return config_str
 
 
@@ -767,17 +726,17 @@ Onlive version: https://gitlabviz.pythonanywhere.com/
     )
     parser.add_argument(
         "--output",
-        choices=["mermaid", "mermaid.live", "kroki.io"],
-        default="mermaid",
+        choices=["raw", "view", "edit"],
+        default="raw",
         help="""output format:
-- mermaid: raw mermaid document (default)
-- mermaid.live: URL to edit diagram on mermaid.live
-- kroki.io: URL to render diagram as PNG using kroki.io""",
+- raw: raw mermaid document (default)
+- view: URL to view diagram on mermaid.live
+- edit: URL to edit diagram on mermaid.live""",
     )
     parser.add_argument(
         "--open",
         action="store_true",
-        help="open the URL in your default web browser (only valid with mermaid.live or kroki.io output)",
+        help="open the URL in your default web browser (only valid with view or edit outputs)",
     )
     parser.add_argument(
         "-v",
@@ -790,10 +749,8 @@ Onlive version: https://gitlabviz.pythonanywhere.com/
     args = parser.parse_args()
 
     # Validate --open usage
-    if args.open and args.output == "mermaid":
-        parser.error(
-            "--open option can only be used with mermaid.live or kroki.io output"
-        )
+    if args.open and args.output == "raw":
+        parser.error("--open option can only be used with view or edit outputs")
 
     # Get token from args, env, or config
     token = args.token or get_token()
@@ -826,14 +783,13 @@ Onlive version: https://gitlabviz.pythonanywhere.com/
 
         # Handle different output formats
         url = None
-        if args.output == "mermaid":
+        if args.output in ("edit", "view"):
+            url = visualizer.generate_mermaid_live_url(
+                mermaid_content, mermaid_config, args.output
+            )
+            print(url)
+        else:
             print(visualizer.generate_mermaid(mermaid_content, mermaid_config))
-        elif args.output == "mermaid.live":
-            url = visualizer.generate_mermaid_live_url(mermaid_content, mermaid_config)
-            print(url)
-        elif args.output == "kroki.io":
-            url = visualizer.generate_kroki_io_url(mermaid_content, mermaid_config)
-            print(url)
 
         # Open URL in browser if requested
         if args.open and url:

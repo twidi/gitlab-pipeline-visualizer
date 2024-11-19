@@ -14,9 +14,9 @@ Visualize GitLab CI pipeline as a Mermaid diagram, showing either the execution 
     ![Dependencies visualization example](dependencies-example.png)
 
 - Multiple output formats:
-  - Direct Mermaid diagram rendering
-  - Mermaid.live URL for interactive editing
-  - Kroki.io URL for PNG rendering
+  - Raw Mermaid diagram rendering
+  - Url for interactive viewing on Mermaid.live
+  - Url for interactive editing on Mermaid.live
 - Customizable Mermaid configuration
 - Available as both CLI tool and web interface
 
@@ -48,6 +48,8 @@ python gitlab-pipeline-visualizer.py https://gitlab.com/group/project/-/pipeline
 ```
 
 To switch between visualization mode, use `--mode` (`timeline` (the default if not given) or `deps`)
+
+To switch between output, use `--output` (`raw`, `view` (url to mermaid.live) or `edit` (url to mermaid.live))
 
 The GitLab token can be provided in three ways (in order of precedence):
 1. Command line argument `--token`

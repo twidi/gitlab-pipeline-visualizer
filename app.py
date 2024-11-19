@@ -1,4 +1,3 @@
-# app.py
 import json
 
 from flask import Flask, jsonify, render_template, request
@@ -80,12 +79,12 @@ def visualize():
         # Generate all three formats
         return jsonify(
             {
-                "mermaid": visualizer.generate_mermaid(mermaid_content, mermaid_config),
-                "mermaid_live": visualizer.generate_mermaid_live_url(
-                    mermaid_content, mermaid_config
+                "raw": visualizer.generate_mermaid(mermaid_content, mermaid_config),
+                "editUrl": visualizer.generate_mermaid_live_url(
+                    mermaid_content, mermaid_config, "edit"
                 ),
-                "kroki_io": visualizer.generate_kroki_io_url(
-                    mermaid_content, mermaid_config
+                "viewUrl": visualizer.generate_mermaid_live_url(
+                    mermaid_content, mermaid_config, "view"
                 ),
             }
         )

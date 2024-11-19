@@ -344,7 +344,6 @@
                 <textarea id="mermaid_config" name="mermaid_config">{{ default_config }}</textarea>
                 <div class="help-text">
                     Note: Configuration options are passed directly with the mermaid generated content, without validation.
-                    Not all Mermaid configurations may work, but we handle some know case, like the ELK layout not working on kroki.io not.
                 </div>
             </div>
         </details>
@@ -358,8 +357,8 @@
         <div id="diagram-actions">
             <button id="copyBtn" class="">Copy as PNG</button>
             <button id="downloadBtn" class="">Download as PNG</button>
-            <a id="mermaidLiveBtn" class="button" target="_blank">Open in Mermaid Live</a>
-            <a id="krokiIoBtn" class="button" target="_blank">Open in Kroki.io</a>
+            <a id="mermaidViewBtn" class="button" target="_blank">View on Mermaid.live</a>
+            <a id="mermaidEditBtn" class="button" target="_blank">Edit on Mermaid.live</a>
         </div>
     </div>
 
@@ -490,8 +489,8 @@
         const mermaidDiv = document.getElementById('mermaid');
         const copyBtn = document.getElementById('copyBtn');
         const downloadBtn = document.getElementById('downloadBtn');
-        const mermaidLiveBtn = document.getElementById('mermaidLiveBtn');
-        const krokiIoBtn = document.getElementById('krokiIoBtn');
+        const mermaidViewBtn = document.getElementById('mermaidViewBtn');
+        const mermaidEditBtn = document.getElementById('mermaidEditBtn');
 
         let cachedPngData = null;
         async function getPngData() {
@@ -608,11 +607,11 @@
                 
                 if (response.ok) {
 
-                    const { svg } = await mermaid.render("mermaid_content", data.mermaid);
+                    const { svg } = await mermaid.render("mermaid_content", data.raw);
                     mermaidDiv.innerHTML = svg;
                     cachedPngData = null;
-                    mermaidLiveBtn.href = data.mermaid_live;
-                    krokiIoBtn.href = data.kroki_io;
+                    mermaidViewBtn.href = data.viewUrl;
+                    mermaidEditBtn.href = data.editUrl;
 
                 } else {
                     resultDiv.style.display = 'none';
