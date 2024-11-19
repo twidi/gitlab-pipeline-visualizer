@@ -46,6 +46,7 @@ query GetPipelineJobs($projectPath: ID!, $pipelineId: CiPipelineID!) {
           stage {
             name
           }
+          schedulingType
           needs {
             nodes {
               name
@@ -188,7 +189,7 @@ class GitLabPipelineVisualizer:
         return stages
 
     def build_dependency_graph(self, jobs, ordered_stages):
-        """Build a complete dependency graph combining explicit needs and stage-based dependencies.
+        """Build a complete dependency graph based on scheduling type and needs.
 
         Args:
             jobs (dict): Dictionary of job data, keyed by job identifier
@@ -206,20 +207,24 @@ class GitLabPipelineVisualizer:
             stage_jobs[job["stage"]].append(job_id)
 
         for job_id, job in jobs.items():
-            # Start with explicit needs
-            job_deps = set(job["needs"])
-
-            # If no explicit needs and not in first stage, depend on all jobs from previous stage
-            if not job_deps and job["stage"] in ordered_stages:
-                stage_idx = ordered_stages.index(job["stage"])
-                if stage_idx > 0:
-                    # Look for the nearest previous stage that has jobs
-                    for prev_stage in reversed(ordered_stages[:stage_idx]):
-                        if prev_stage in stage_jobs:
-                            job_deps.update(stage_jobs[prev_stage])
-                            break
-
-            dependencies[job_id] = list(job_deps)
+            if job["needs"]:
+                # If needs are specified, always use them regardless of scheduling type
+                dependencies[job_id] = list(job["needs"])
+            else:
+                # No explicit needs - check scheduling type
+                if job.get("schedulingType") == "dag":
+                    dependencies[job_id] = []
+                else:
+                    # Depend on all previous stage jobs
+                    deps = set()
+                    if job["stage"] in ordered_stages:
+                        stage_idx = ordered_stages.index(job["stage"])
+                        if stage_idx > 0:
+                            for prev_stage in reversed(ordered_stages[:stage_idx]):
+                                if prev_stage in stage_jobs:
+                                    deps.update(stage_jobs[prev_stage])
+                                    break
+                    dependencies[job_id] = list(deps)
 
         return dependencies
 
@@ -264,7 +269,7 @@ class GitLabPipelineVisualizer:
         )
 
     def normalize_jobs(self, jobs_data):
-        """Simplify jobs data and order them by `queuedAt`, removing alls that are not in running/success/failed status"""
+        """Simplify jobs data and order them by `startedAt`, removing alls that are not in running/success/failed status"""
         return sorted(
             [
                 job
