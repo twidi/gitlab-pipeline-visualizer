@@ -269,6 +269,9 @@ class GitLabPipelineVisualizer:
 
     def normalize_jobs(self, jobs_data):
         """Simplify jobs data and order them by `startedAt`, removing alls that are not in running/success/failed status"""
+        # remove needs not present in jobs, it may be optional needs but we don't have the optional flag available in the graphql data
+        jobs_names = {job["name"] for job in jobs_data}
+
         return sorted(
             [
                 job
@@ -286,6 +289,7 @@ class GitLabPipelineVisualizer:
                         [
                             self.name_to_identifier(node["name"])
                             for node in job["needs"]["nodes"]
+                            if node["name"] in jobs_names
                         ]
                         if job.get("needs", {}).get("nodes", [])
                         else []
