@@ -441,6 +441,10 @@ class GitLabPipelineVisualizer:
 
         return ordered_jobs
 
+    @staticmethod
+    def clean_gantt_name(name):
+        return name.replace(":", " ")
+
     def generate_mermaid_timeline(self):
         """Generate a Mermaid Gantt chart showing pipeline execution timeline."""
         stages, jobs, dependencies = self.process_pipeline_data()
@@ -491,8 +495,9 @@ class GitLabPipelineVisualizer:
 
                 gantt_tags = get_gantt_tags(job)
                 gantt_tags_part = f"{gantt_tags}, " if gantt_tags else ""
+
                 mermaid.append(
-                    f"    {job['name']} {formatted_duration:<10} :{gantt_tags_part}{job_id}, {start_time}, {job['duration']}s"
+                    f"    {self.clean_gantt_name(job['name'])} {formatted_duration:<10} :{gantt_tags_part}{job_id}, {start_time}, {job['duration']}s"
                 )
 
         return "\n".join(mermaid)
