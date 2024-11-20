@@ -357,8 +357,13 @@
         <div id="diagram-actions">
             <button id="copyBtn" class="">Copy as PNG</button>
             <button id="downloadBtn" class="">Download as PNG</button>
-            <a id="mermaidViewBtn" class="button" target="_blank">View on Mermaid.live</a>
-            <a id="mermaidEditBtn" class="button" target="_blank">Edit on Mermaid.live</a>
+            <a id="mermaidViewBtn" class="button" target="_blank">View (Mermaid.live)</a>
+            <a id="mermaidEditBtn" class="button" target="_blank">Edit (Mermaid.live)</a>
+            <a id="mermaidJpgBtn" class="button" target="_blank">JPG (Mermaid.ink)</a>
+            <a id="mermaidPngBtn" class="button" target="_blank">PNG (Mermaid.ink)</a>
+            <a id="mermaidWebpBtn" class="button" target="_blank">WEBP (Mermaid.ink)</a>
+            <a id="mermaidSvgBtn" class="button" target="_blank">SVG (Mermaid.ink)</a>
+            <a id="mermaidPdfBtn" class="button" target="_blank">PDF (Mermaid.ink)</a>
         </div>
     </div>
 
@@ -491,6 +496,11 @@
         const downloadBtn = document.getElementById('downloadBtn');
         const mermaidViewBtn = document.getElementById('mermaidViewBtn');
         const mermaidEditBtn = document.getElementById('mermaidEditBtn');
+        const mermaidJpgBtn = document.getElementById('mermaidJpgBtn');
+        const mermaidPngBtn = document.getElementById('mermaidPngBtn');
+        const mermaidWebpBtn = document.getElementById('mermaidWebpBtn');
+        const mermaidSvgBtn = document.getElementById('mermaidSvgBtn');
+        const mermaidPdfBtn = document.getElementById('mermaidPdfBtn');
 
         let cachedPngData = null;
         async function getPngData() {
@@ -612,6 +622,11 @@
                     cachedPngData = null;
                     mermaidViewBtn.href = data.viewUrl;
                     mermaidEditBtn.href = data.editUrl;
+                    mermaidJpgBtn.href = data.jpgUrl;
+                    mermaidPngBtn.href = data.pngUrl;
+                    mermaidWebpBtn.href = data.webpUrl;
+                    mermaidSvgBtn.href = data.svgUrl;
+                    mermaidPdfBtn.href = data.pdfUrl;
 
                 } else {
                     resultDiv.style.display = 'none';

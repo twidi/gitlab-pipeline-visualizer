@@ -86,6 +86,21 @@ def visualize():
                 "viewUrl": visualizer.generate_mermaid_live_url(
                     mermaid_content, mermaid_config, "view"
                 ),
+                "jpgUrl": visualizer.generate_mermaid_ink_url(
+                    mermaid_content, mermaid_config, "jpg"
+                ),
+                "pngUrl": visualizer.generate_mermaid_ink_url(
+                    mermaid_content, mermaid_config, "png"
+                ),
+                "svgUrl": visualizer.generate_mermaid_ink_url(
+                    mermaid_content, mermaid_config, "svg"
+                ),
+                "webpUrl": visualizer.generate_mermaid_ink_url(
+                    mermaid_content, mermaid_config, "webp"
+                ),
+                "pdfUrl": visualizer.generate_mermaid_ink_url(
+                    mermaid_content, mermaid_config, "pdf"
+                ),
             }
         )
 

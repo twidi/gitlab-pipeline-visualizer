@@ -500,17 +500,16 @@ class GitLabPipelineVisualizer:
         else:
             raise ValueError(f"Unsupported mode: {mode}")
 
-    @staticmethod
-    def generate_mermaid(mermaid_content, mermaid_config):
+    @classmethod
+    def generate_mermaid(cls, mermaid_content, mermaid_config):
         """Generate a complete Mermaid diagram by combining configuration and content."""
         wrapped_config = wrap_mermaid_config(mermaid_config)
         return wrapped_config + mermaid_content
 
-    @staticmethod
-    def generate_mermaid_live_url(mermaid_content, mermaid_config, mode):
-        """Generate a URL for mermaid.live with the diagram content."""
-        wrapped_config = wrap_mermaid_config(mermaid_config)
-        mermaid_content = wrapped_config + mermaid_content
+    @classmethod
+    def generate_mermaid_encoded_string(cls, mermaid_content, mermaid_config):
+        """Generate the encoded part for an URL for mermaid.live with the diagram content."""
+        mermaid_content = cls.generate_mermaid(mermaid_content, mermaid_config)
 
         # Create the state object expected by mermaid.live
         state = {
@@ -522,9 +521,33 @@ class GitLabPipelineVisualizer:
 
         # Encode the state object
         json_str = json.dumps(state)
-        base64_str = base64.urlsafe_b64encode(json_str.encode()).decode().rstrip("=")
+        return base64.urlsafe_b64encode(json_str.encode()).decode().rstrip("=")
 
-        return f"https://mermaid.live/{mode}#{base64_str}"
+    @classmethod
+    def generate_mermaid_live_url(cls, mermaid_content, mermaid_config, mode):
+        """Generate a URL for mermaid.live with the diagram content."""
+        encoded_string = cls.generate_mermaid_encoded_string(
+            mermaid_content, mermaid_config
+        )
+        return f"https://mermaid.live/{mode}#{encoded_string}"
+
+    @classmethod
+    def generate_mermaid_ink_url(cls, mermaid_content, mermaid_config, mode):
+        encoded_string = cls.generate_mermaid_encoded_string(
+            mermaid_content, mermaid_config
+        )
+
+        path = "pdf" if mode == "pdf" else "img"
+
+        querystring = ""
+        if mode == "jpeg":
+            pass
+        elif mode == "pdf":
+            querystring = "?fit"
+        else:
+            querystring = f"?type={mode}"
+
+        return f"https://mermaid.ink/{path}/{encoded_string}{querystring}"
 
 
 def get_config_paths():
@@ -726,12 +749,17 @@ Onlive version: https://gitlabviz.pythonanywhere.com/
     )
     parser.add_argument(
         "--output",
-        choices=["raw", "view", "edit"],
+        choices=["raw", "view", "edit", "jpg", "png", "svg", "webp", "pdf"],
         default="raw",
         help="""output format:
 - raw: raw mermaid document (default)
 - view: URL to view diagram on mermaid.live
-- edit: URL to edit diagram on mermaid.live""",
+- edit: URL to edit diagram on mermaid.live
+- jpg: URL of jpg image on mermaid.ink
+- png: URL of png image on mermaid.ink
+- webp: URL for webp image on mermaid.ink
+- svg: URL for svg image on mermaid.ink
+- pdf: URL for pdf on mermaid.ink""",
     )
     parser.add_argument(
         "--open",
@@ -750,7 +778,7 @@ Onlive version: https://gitlabviz.pythonanywhere.com/
 
     # Validate --open usage
     if args.open and args.output == "raw":
-        parser.error("--open option can only be used with view or edit outputs")
+        parser.error("--open option can only be used with URL outputs")
 
     # Get token from args, env, or config
     token = args.token or get_token()
@@ -785,6 +813,11 @@ Onlive version: https://gitlabviz.pythonanywhere.com/
         url = None
         if args.output in ("edit", "view"):
             url = visualizer.generate_mermaid_live_url(
+                mermaid_content, mermaid_config, args.output
+            )
+            print(url)
+        elif args.output in ("jpg", "png", "webp", "svg", "pdf"):
+            url = visualizer.generate_mermaid_ink_url(
                 mermaid_content, mermaid_config, args.output
             )
             print(url)
