@@ -1,0 +1,26 @@
+{
+  "manifest_version": 2,
+  "name": "Gitlab Pipeline Visualizer",
+  "version": "1.0",
+  "description": "Add visualization (timeline and dependencies) for gitlab pipelines",
+  "homepage_url": "https://github.com/twidi/gitlab-pipeline-visualizer/#readme",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "options_ui": {
+    "page": "gitlabviz-options.html",
+    "browser_style": false
+  },
+  "background": {
+    "scripts": ["gitlabviz-background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*/*/-/pipelines/*"
+      ],
+      "js": ["gitlabviz-config.js", "gitlabviz.js"]
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import json
 
 from flask import Flask, jsonify, render_template, request
+from flask_cors import cross_origin
 
 from gitlab_pipeline_visualizer import (
     DEFAULT_MERMAID_CONFIG,
@@ -35,7 +36,26 @@ def index():
     )
 
 
+@app.route("/addon-config")
+@cross_origin(methods=["GET"])
+def get_query():
+    try:
+        project_path = request.args.get("project_path")
+        pipeline_id = request.args.get("pipeline_id")
+    except Exception as e:
+        logger.exception(e)
+        return jsonify({"error": "Missing parameters"}), 400
+
+    data = {
+        "graphql_query": GRAPHQL_QUERY,
+        "graphql_variables": get_query_variables(project_path, pipeline_id),
+    }
+
+    return jsonify(data)
+
+
 @app.route("/visualize", methods=["POST"])
+@cross_origin(methods=["POST"])
 def visualize():
     try:
         # Get common form data

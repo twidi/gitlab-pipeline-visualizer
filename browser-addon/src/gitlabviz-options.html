@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="gitlabviz-options.css">
+</head>
+<body>
+  <p>This addon uses a server to do the conversion from raw data extracted from the Gitlab pipeline page to a diagram.</p>
+  <p>It defaults to <code id="gitlabVizHostText"></code> but you can host your own server.</p>
+  <form>
+    <label for="gitlabVizHost">Server URL:</label>
+    <input type="text" id="gitlabVizHost" />
+    <button type="submit">Save</button>
+    <button type="reset">Reset</button>
+  </form>
+  <script src="gitlabviz-config.js"></script>
+  <script src="gitlabviz-options.js"></script>
+</body>
+</html>

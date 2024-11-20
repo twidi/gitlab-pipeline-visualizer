@@ -24,8 +24,9 @@ import requests
 logger = logging.getLogger("GitLabPipelineVisualizer")
 
 
+# layout: elk  # remnoved for now (not supported by mermaid.ink)
+
 DEFAULT_MERMAID_CONFIG = """\
-layout: elk
 gantt:
   useWidth: 1600
 """
