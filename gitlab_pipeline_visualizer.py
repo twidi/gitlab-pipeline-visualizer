@@ -40,7 +40,7 @@ query GetPipelineJobs($projectPath: ID!, $pipelineId: CiPipelineID!) {
           name
         }
       }
-      jobs {
+      jobs(statuses: [SUCCESS, FAILED, RUNNING]) {
         nodes {
           name
           status
