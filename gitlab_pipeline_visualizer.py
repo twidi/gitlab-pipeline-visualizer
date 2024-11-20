@@ -10,6 +10,7 @@ import re
 import sys
 import traceback
 import webbrowser
+import zlib
 from collections import defaultdict
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -511,6 +512,13 @@ class GitLabPipelineVisualizer:
         return wrapped_config + mermaid_content
 
     @classmethod
+    def pako(cls, data):
+        compress = zlib.compressobj(9, zlib.DEFLATED, 15, 8, zlib.Z_DEFAULT_STRATEGY)
+        compressed_data = compress.compress(data)
+        compressed_data += compress.flush()
+        return compressed_data
+
+    @classmethod
     def generate_mermaid_encoded_string(cls, mermaid_content, mermaid_config):
         """Generate the encoded part for an URL for mermaid.live with the diagram content."""
         mermaid_content = cls.generate_mermaid(mermaid_content, mermaid_config)
@@ -525,7 +533,9 @@ class GitLabPipelineVisualizer:
 
         # Encode the state object
         json_str = json.dumps(state)
-        return base64.urlsafe_b64encode(json_str.encode()).decode().rstrip("=")
+        pako = cls.pako(json_str.encode())
+
+        return "pako:" + base64.urlsafe_b64encode(pako).decode().rstrip("=")
 
     @classmethod
     def generate_mermaid_live_url(cls, mermaid_content, mermaid_config, mode):
