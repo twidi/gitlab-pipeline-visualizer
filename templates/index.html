@@ -196,15 +196,24 @@
         }
 
         #diagram-actions {
-            position: absolute;
-            top: 20px;
-            left: 10px;
-            display: none;
-            gap: 10px;
-        }
-
-        #result:hover #diagram-actions {
+            width: 100;
             display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        #diagram-actions button, #diagram-actions a {
+            margin: 0;
+            border: none;
+            padding: 0;
+            background: none;
+            font: inherit;
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+        #diagram-actions button:hover, #diagram-actions a:hover {
+            text-decoration: underline;
         }
 
         #mermaid {
@@ -353,18 +362,18 @@
     <div id="error"></div>
 
     <div id="result" style="display: none;">
-        <div id="mermaid" class="mermaid"></div>
         <div id="diagram-actions">
             <button id="copyBtn" class="">Copy as PNG</button>
             <button id="downloadBtn" class="">Download as PNG</button>
-            <a id="mermaidViewBtn" class="button" target="_blank">View (Mermaid.live)</a>
-            <a id="mermaidEditBtn" class="button" target="_blank">Edit (Mermaid.live)</a>
-            <a id="mermaidJpgBtn" class="button" target="_blank">JPG (Mermaid.ink)</a>
-            <a id="mermaidPngBtn" class="button" target="_blank">PNG (Mermaid.ink)</a>
-            <a id="mermaidWebpBtn" class="button" target="_blank">WEBP (Mermaid.ink)</a>
-            <a id="mermaidSvgBtn" class="button" target="_blank">SVG (Mermaid.ink)</a>
-            <a id="mermaidPdfBtn" class="button" target="_blank">PDF (Mermaid.ink)</a>
+            <a id="mermaidViewBtn" target="_blank">View (Mermaid.live)</a>
+            <a id="mermaidEditBtn" target="_blank">Edit (Mermaid.live)</a>
+            <a id="mermaidJpgBtn" target="_blank">JPG (Mermaid.ink)</a>
+            <a id="mermaidPngBtn" target="_blank">PNG (Mermaid.ink)</a>
+            <a id="mermaidWebpBtn" target="_blank">WEBP (Mermaid.ink)</a>
+            <a id="mermaidSvgBtn" target="_blank">SVG (Mermaid.ink)</a>
+            <a id="mermaidPdfBtn" target="_blank">PDF (Mermaid.ink)</a>
         </div>
+        <div id="mermaid" class="mermaid"></div>
     </div>
 
     <canvas id="conversionCanvas"></canvas>
