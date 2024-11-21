@@ -116,6 +116,30 @@ The web interface requires:
 - A GitLab personal access token with `read_api` scope
 - Selection of visualization mode and output format
 
+
+### Browser Addon
+
+A browser extension is available to automatically display pipeline visualizations directly on GitLab pipeline web pages.
+
+Note that the addon is currently not packaged or published to any browser extension stores - it can only be used locally as an unpacked extension in developer mode.
+
+#### Installation
+
+1. Clone the repository if you haven't already
+2. Enable Developer Mode in your browser's extensions settings
+3. Load the unpacked extension by pointing your browser to the `browser-addon/firefox-or-chrom/manifest.json` file in the repository
+
+#### Configuration
+
+By default, the addon connects to https://gitlabviz.pythonanywhere.com/ for generating visualizations. You can customize this in the addon preferences:
+
+1. Access the addon options/preferences through your browser's extension management interface
+2. Update the "Server URL" field to point to your preferred visualization server
+3. Save the changes
+
+This configuration option allows you to use a different server instance if you're running your own deployment or want to use an alternative hosted version.
+
+
 ## Requirements
 
 - Python 3.10+
