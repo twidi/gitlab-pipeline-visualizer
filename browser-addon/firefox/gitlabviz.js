@@ -53,17 +53,17 @@ async function handleMode(container, mode, gitlabVizHost, graphQLData) {
         link.appendChild(img);
     }
 
-    const response = await sendMessage({
+    const vizData = await sendMessage({
         type: 'getVizData',
         gitlabVizHost: gitlabVizHost,
         graphQLData: graphQLData,
         mode: mode
     });
-    if (!response || response?.error) {
+    if (!vizData || vizData?.error) {
         link.style.display = "none";
     } else {
-        img.src = response.pngUrl;
-        link.href = response.viewUrl;
+        img.src = vizData.pngUrl;
+        link.href = vizData.viewUrl;
         link.style.display = "unset";
     }
 }
@@ -91,14 +91,29 @@ async function runForUrl(parsedUrl) {
     const { gitlabVizHost } = await getStorageData();
 
     try {
-        const response = await sendMessage({
-            type: 'getQuery',
-            gitlabVizHost: gitlabVizHost,
-            projectPath: parsedUrl.projectPath,
-            pipelineId: parsedUrl.pipelineId
-        });
-        if (!response || response?.error) { throw new Error(response.error); }
-    	const graphQLData = await getgraphQLData(parsedUrl.gitlabUrl, response.graphql_query);
+        let graphQLData;
+        let hasNextPage = true;
+        let nextPageCursor = null;
+        while (hasNextPage) {
+            const queryData = await sendMessage({
+                type: 'getQuery',
+                gitlabVizHost: gitlabVizHost,
+                projectPath: parsedUrl.projectPath,
+                pipelineId: parsedUrl.pipelineId,
+                nextPageCursor: nextPageCursor
+            });
+            if (!queryData || queryData?.error) { throw new Error(queryData.error); }
+            const pageData = await getgraphQLData(parsedUrl.gitlabUrl, queryData.graphql_query, nextPageCursor);
+            const paginationData = pageData.data.project.pipeline.jobs?.pageInfo;
+            if (paginationData) { delete pageData.data.project.pipeline.jobs.pageInfo; }
+            if (graphQLData) {
+                graphQLData.data.project.pipeline.jobs.nodes.push(...pageData.data.project.pipeline.jobs.nodes)
+            } else {
+                graphQLData = pageData;
+            }
+            hasNextPage = (paginationData && paginationData?.hasNextPage);
+            nextPageCursor = hasNextPage ? paginationData.endCursor : null;
+        }
 
         let container = document.getElementById("gitlabviz-container");
         if (!container) {

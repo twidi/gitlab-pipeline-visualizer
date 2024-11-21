@@ -40,7 +40,7 @@ query GetPipelineJobs {
           name
         }
       }
-      jobs(statuses: [SUCCESS, FAILED, RUNNING]) {
+      jobs(statuses: [SUCCESS, FAILED, RUNNING]%(CURSOR)s) {
         nodes {
           name
           status
@@ -58,14 +58,22 @@ query GetPipelineJobs {
           duration
           queuedAt
         }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
       }
     }
   }
 }"""
 
 
-def prepare_graphql_query(project_path, pipeline_id):
-    return GRAPHQL_QUERY % {"PROJECT_PATH": project_path, "PIPELINE_ID": pipeline_id}
+def prepare_graphql_query(project_path, pipeline_id, next_page_cursor=None):
+    return GRAPHQL_QUERY % {
+        "PROJECT_PATH": project_path,
+        "PIPELINE_ID": pipeline_id,
+        "CURSOR": f', after: "{next_page_cursor}"' if next_page_cursor else "",
+    }
 
 
 def fetch_pipeline_data(gitlab_url, gitlab_token, project_path, pipeline_id):
@@ -85,20 +93,48 @@ def fetch_pipeline_data(gitlab_url, gitlab_token, project_path, pipeline_id):
         "Content-Type": "application/json",
     }
 
+    has_next_page = True
+    next_page_cursor = None
     url = f"{gitlab_url}/api/graphql"
-    logger.info(url)
-    response = requests.post(
-        url, headers=headers, json={"query": prepare_graphql_query(project_path, pipeline_id)}
-    )
-    try:
-        json_data = response.json()
-        logger.debug(json.dumps(response.json(), indent=2))
-    except Exception:
-        logger.debug(response.content)
 
-    response.raise_for_status()
+    json_data = None
 
-    return json_data or response.content
+    while has_next_page:
+        logger.info(
+            f"Calling {url} for {project_path=}, {pipeline_id=}, {next_page_cursor=}"
+        )
+        response = requests.post(
+            url,
+            headers=headers,
+            json={
+                "query": prepare_graphql_query(
+                    project_path, pipeline_id, next_page_cursor
+                )
+            },
+        )
+        try:
+            page_data = response.json()
+            pagination_data = (
+                page_data["data"]["project"]["pipeline"]["jobs"].pop("pageInfo", None)
+                or {}
+            )
+            logger.debug(json.dumps(response.json(), indent=2))
+        except Exception:
+            logger.debug(response.content)
+            raise
+
+        if json_data:
+            json_data["data"]["project"]["pipeline"]["jobs"]["nodes"].extend(
+                page_data["data"]["project"]["pipeline"]["jobs"]["nodes"]
+            )
+        else:
+            json_data = page_data
+        has_next_page = pagination_data.get("hasNextPage")
+        next_page_cursor = pagination_data.get("endCursor") if has_next_page else None
+
+        response.raise_for_status()
+
+    return json_data
 
 
 class GitLabPipelineVisualizer:

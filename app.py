@@ -33,12 +33,15 @@ def get_query():
     try:
         project_path = request.args.get("project_path")
         pipeline_id = request.args.get("pipeline_id")
+        next_page_cursor = request.args.get("next_page_cursor")
     except Exception as e:
         logger.exception(e)
         return jsonify({"error": "Missing parameters"}), 400
 
     data = {
-        "graphql_query": prepare_graphql_query(project_path, pipeline_id),
+        "graphql_query": prepare_graphql_query(
+            project_path, pipeline_id, next_page_cursor
+        ),
     }
 
     return jsonify(data)
