@@ -15,10 +15,10 @@ Visualize GitLab CI pipeline as a Mermaid diagram, showing either the execution 
 
 - Multiple output formats:
   - Raw Mermaid diagram rendering
-  - Url for interactive viewing on Mermaid.live
-  - Url for interactive editing on Mermaid.live
+  - Url for interactive viewing or editing on Mermaid.live
+  - Url to different formats (png, jpg, svg, webp, pdf) on Mermaid.ink
 - Customizable Mermaid configuration
-- Available as both CLI tool and web interface
+- Available as both CLI tool, web interface and browser extension
 
 ## Installation
 
@@ -49,7 +49,7 @@ python gitlab-pipeline-visualizer.py https://gitlab.com/group/project/-/pipeline
 
 To switch between visualization mode, use `--mode` (`timeline` (the default if not given) or `deps`)
 
-To switch between output, use `--output` (`raw`, `view` (url to mermaid.live) or `edit` (url to mermaid.live))
+To switch between output, use `--output` (`raw`, `view` or `edit` (url to mermaid.live), `png`, `jpg`, `svg`, `webp`, `pdf` (url to mermaid.ink))
 
 The GitLab token can be provided in three ways (in order of precedence):
 1. Command line argument `--token`
@@ -111,10 +111,9 @@ python app.py
 
 Then visit `http://localhost:5000` in your browser.
 
-The web interface requires:
+The web interface requires
 - A GitLab pipeline URL
-- A GitLab personal access token with `read_api` scope
-- Selection of visualization mode and output format
+- Either a GitLab personal access token with `read_api` scope, or the output of a (given) GraphQL query to run on https://gitlab.com/-/graphql-explorer
 
 
 ### Browser Addon
