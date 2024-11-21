@@ -32,9 +32,9 @@ gantt:
 """
 
 GRAPHQL_QUERY = """\
-query GetPipelineJobs($projectPath: ID!, $pipelineId: CiPipelineID!) {
-  project(fullPath: $projectPath) {
-    pipeline(id: $pipelineId) {
+query GetPipelineJobs {
+  project(fullPath: "%(PROJECT_PATH)s") {
+    pipeline(id: "gid://gitlab/Ci::Pipeline/%(PIPELINE_ID)s") {
       stages {
         nodes {
           name
@@ -64,11 +64,8 @@ query GetPipelineJobs($projectPath: ID!, $pipelineId: CiPipelineID!) {
 }"""
 
 
-def get_query_variables(project_path, pipeline_id):
-    return {
-        "projectPath": project_path,
-        "pipelineId": f"gid://gitlab/Ci::Pipeline/{pipeline_id}",
-    }
+def prepare_graphql_query(project_path, pipeline_id):
+    return GRAPHQL_QUERY % {"PROJECT_PATH": project_path, "PIPELINE_ID": pipeline_id}
 
 
 def fetch_pipeline_data(gitlab_url, gitlab_token, project_path, pipeline_id):
@@ -83,8 +80,6 @@ def fetch_pipeline_data(gitlab_url, gitlab_token, project_path, pipeline_id):
     Returns:
         dict: Full API response data
     """
-    variables = get_query_variables(project_path, pipeline_id)
-
     headers = {
         "Authorization": f"Bearer {gitlab_token}",
         "Content-Type": "application/json",
@@ -93,7 +88,7 @@ def fetch_pipeline_data(gitlab_url, gitlab_token, project_path, pipeline_id):
     url = f"{gitlab_url}/api/graphql"
     logger.info(url)
     response = requests.post(
-        url, headers=headers, json={"query": GRAPHQL_QUERY, "variables": variables}
+        url, headers=headers, json={"query": prepare_graphql_query(project_path, pipeline_id)}
     )
     try:
         json_data = response.json()

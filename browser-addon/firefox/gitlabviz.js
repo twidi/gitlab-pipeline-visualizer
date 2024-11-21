@@ -31,38 +31,39 @@ function validatePipelineUrl(url) {
     }
 }
 
-async function getgraphQLData(gitlabHost, query, variables) {
+async function getgraphQLData(gitlabHost, query) {
 	const queryParam = encodeURIComponent(query);
-	const variablesParam = encodeURIComponent(JSON.stringify(variables));
-	response = await fetch(`${gitlabHost}/api/graphql?query=${queryParam}&variables=${variablesParam}`);
+	const response = await fetch(`${gitlabHost}/api/graphql?query=${queryParam}`);
 	return await response.json();
 }
 
 async function handleMode(container, mode, gitlabVizHost, graphQLData) {
-    let link = container.querySelector(`a.gitlabviz-link-${mode}`);
+    let link = container.querySelector(`a#gitlabviz-link-${mode}`);
     if (!link) {
         link = document.createElement('a');
+        link.id = `gitlabviz-link-${mode}`
         link.target = "_blank";
         container.appendChild(link);
     }
-    let img = container.querySelector(`img.gitlabviz-img-${mode}`);
+    let img = container.querySelector(`img#gitlabviz-img-${mode}`);
     if (!img) {
         img = document.createElement("img");
+        img.id = `gitlabviz-img-${mode}`
         img.setAttribute("style", "max-width: 100%");
         link.appendChild(img);
     }
 
-    const data = await sendMessage({
+    const response = await sendMessage({
         type: 'getVizData',
         gitlabVizHost: gitlabVizHost,
         graphQLData: graphQLData,
         mode: mode
     });
-    if (!reponse || response?.error) {
+    if (!response || response?.error) {
         link.style.display = "none";
     } else {
-        img.src = data.pngUrl;
-        link.href = data.viewUrl;
+        img.src = response.pngUrl;
+        link.href = response.viewUrl;
         link.style.display = "unset";
     }
 }
@@ -91,13 +92,13 @@ async function runForUrl(parsedUrl) {
 
     try {
         const response = await sendMessage({
-            type: 'fetchConfig',
+            type: 'getQuery',
             gitlabVizHost: gitlabVizHost,
             projectPath: parsedUrl.projectPath,
             pipelineId: parsedUrl.pipelineId
         });
-        if (!reponse || response?.error) { throw new Error(response.error); }
-    	const graphQLData = await getgraphQLData(parsedUrl.gitlabUrl, response.graphql_query, response.graphql_variables);
+        if (!response || response?.error) { throw new Error(response.error); }
+    	const graphQLData = await getgraphQLData(parsedUrl.gitlabUrl, response.graphql_query);
 
         let container = document.getElementById("gitlabviz-container");
         if (!container) {

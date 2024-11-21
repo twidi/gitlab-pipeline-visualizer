@@ -5,12 +5,11 @@ from flask_cors import cross_origin
 
 from gitlab_pipeline_visualizer import (
     DEFAULT_MERMAID_CONFIG,
-    GRAPHQL_QUERY,
     GitLabPipelineVisualizer,
     fetch_pipeline_data,
-    get_query_variables,
     logger,
     parse_gitlab_url,
+    prepare_graphql_query,
     setup_logging,
 )
 
@@ -22,21 +21,13 @@ setup_logging(0)
 
 @app.route("/")
 def index():
-    # Get GraphQL query and variables template
-    variables_template = get_query_variables("%(PROJECT_PATH)s", "%(PIPELINE_ID)s")
-
-    # Convert to JSON strings for safe embedding in HTML
-    variables_template_json = json.dumps(variables_template, indent=2)
-
     return render_template(
         "index.html",
         default_config=DEFAULT_MERMAID_CONFIG,
-        graphql_query=GRAPHQL_QUERY,
-        variables_template=variables_template_json,
     )
 
 
-@app.route("/addon-config")
+@app.route("/get_query")
 @cross_origin(methods=["GET"])
 def get_query():
     try:
@@ -47,8 +38,7 @@ def get_query():
         return jsonify({"error": "Missing parameters"}), 400
 
     data = {
-        "graphql_query": GRAPHQL_QUERY,
-        "graphql_variables": get_query_variables(project_path, pipeline_id),
+        "graphql_query": prepare_graphql_query(project_path, pipeline_id),
     }
 
     return jsonify(data)

@@ -1,7 +1,7 @@
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch (message.type) {
-        case 'fetchConfig':
-            fetch(`${message.gitlabVizHost}/addon-config?project_path=${message.projectPath}&pipeline_id=${message.pipelineId}`)
+        case 'getQuery':
+            fetch(`${message.gitlabVizHost}/get_query?project_path=${message.projectPath}&pipeline_id=${message.pipelineId}`)
                 .then(response => response.json())
                 .then(data => sendResponse(data))
                 .catch(error => sendResponse({ error: error.message }));
